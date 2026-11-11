@@ -1,32 +1,51 @@
-# Town Weather Hub (template)
+# Town Weather Hub
 
-A one-page weather, power, and coast dashboard for a small town, built to be forked and adapted in an afternoon. Residents get everything that matters before, during, and after severe weather without knowing which agency's website to visit:
+[![Tests](https://github.com/anniebritton/town-weather-hub-template/actions/workflows/tests.yml/badge.svg)](https://github.com/anniebritton/town-weather-hub-template/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-- Live **weather alerts and forecast** from the National Weather Service, with plain-language "what this means for your town" translations
-- **Power outage numbers** from your utility's public data, refreshed every 15 minutes by a GitHub Action (optional)
+A one-page weather, power, and coast dashboard you can fork and point at your own small town in an afternoon. National weather apps are too coarse for a rural community and miss what matters locally: which utility to call, what a gale warning means for the boats on your moorings, whether the well is going dry. This puts that in one place, in large plain type.
+
+![Town Weather Hub rendered with the Southport, Maine example config](docs/screenshot-desktop.png)
+
+**Live demo (Southport, Maine example): <https://anniebritton.github.io/town-weather-hub-template/>** (works once GitHub Pages is enabled for the repo, see below).
+
+It is plain HTML/CSS/JS: **no server, no build step, no paid services**. Data comes from free public sources (National Weather Service, NOAA tides, the U.S. Drought Monitor), and the site is hosted free on GitHub Pages.
+
+## Who is this for
+
+- Residents or volunteers in a small town, island, or rural county who want a local page people can bookmark, and who are comfortable editing a JSON file.
+- Town offices, fire departments, libraries, and community groups that want something they can keep running without a developer.
+- Not a replacement for official emergency channels; see the disclaimer at the bottom.
+
+## What you get
+
+- Live **weather alerts and forecast** from the NWS, with plain-language "what this means for your town" translations you write once
+- **Power outage numbers** from your utility's public data, refreshed every 15 minutes by a GitHub Action (optional; link-outs otherwise)
 - **Marine conditions**: wind, seas, wave heights, and NOAA tides at your nearest gauge (delete the tab if you are inland)
-- **Daily fire danger** map from your state forestry agency
+- **Daily fire danger** map from your state forestry agency, and a **drought** map with private-well guidance
 - **Mosquito and tick activity estimates** computed from the day's forecast
-- **Long-term climate risk**: sea level rise, drought, and well-water resources
+- **Long-term flood and climate risk** resources
 - A printable **fridge card** with emergency numbers and checklists that work when the power doesn't
-- **Storm Mode**: when the NWS issues a severe warning, the whole page switches to a red alert layout with a preparedness checklist, tide timing, and the utility's phone number (preview it any time with `?storm=demo`)
+- **Storm Mode**: when the NWS issues a severe warning the page switches to a red alert layout with a preparedness checklist, tide timing, and the utility's phone number (preview any time with `?storm=demo`)
 
-It is plain HTML/CSS/JS with **no build step and no backend**, hosted free on GitHub Pages. Large type, high contrast, plain language, and no app to install, for an audience that skews older and non-technical.
+<img src="docs/screenshot-mobile.png" alt="Mobile view of the same page" width="260">
 
-All town-specific values live in one file, [`town.json`](town.json). The version in this repo describes a fictional town, "Exampleton, Anystate", and its NWS and NOAA identifiers are placeholders: the page will load but show errors or fallbacks until you replace them.
+## How it works
+
+All town-specific values (coordinates, NWS office and zones, tide station, utility, local advice text, emergency numbers) live in one file, [`town.json`](town.json); the page reads it at load time and fetches live data straight from the public APIs. The `town.json` in this repo describes a fictional town, "Exampleton, Anystate", with placeholder identifiers. A complete real configuration is in [`examples/southport/`](examples/southport/town.json) (Southport Island, Maine), which is what the live demo shows.
 
 ## Use this template
 
 1. On GitHub, click **Use this template** (top right) and choose **Create a new repository**. (If you are reading a copy that is not a template, clone it and push to a new repo instead.)
-2. Edit `town.json` for your town (steps below).
-3. Turn on GitHub Pages: **Settings, Pages**, deploy from the `main` branch, root folder.
+2. Edit `town.json` for your town (steps below). Run `npm run check-config` to list the values that are still placeholders.
+3. Turn on GitHub Pages: **Settings, Pages**, deploy from the `main` branch, root folder. (If you keep `.github/workflows/pages.yml`, choose **GitHub Actions** as the source instead, and delete its "Use the Southport example" step so your own `town.json` is published.)
 4. Optional, for outage data: **Settings, Actions, General**, allow workflows read/write permissions, then add your API key as a repository secret (see "Point the outage data at your utility").
 
 ## Adapt it to your town
 
 ### 1. Name and place
 
-Edit `site` in `town.json`: `name`, `place` (used in sentences such as "No active weather alerts for ..."), `kicker`, `tagline`, `description`, and `area_name` (the county or region used in the storm-mode demo alert).
+Edit `site` in `town.json` (compare with [`examples/southport/town.json`](examples/southport/town.json) for what finished values look like): `name`, `place` (used in sentences such as "No active weather alerts for ..."), `kicker`, `tagline`, `description`, and `area_name` (the county or region used in the storm-mode demo alert).
 
 ### 2. Point the weather at your town
 
@@ -109,12 +128,13 @@ None of the tests need internet access or API keys. Node and Playwright are used
 npm install
 npx playwright install chromium
 npm test            # unit + python + browser tests
+npm run check-config  # report placeholder values left in town.json
 npm run test:unit   # Node only: text helpers, pest model, town.json validation, outage data contract
 npm run test:py     # Python only: scripts/fetch_outages.py parsing (standard library, no installs)
 npm run test:e2e    # Playwright against a local static server, with NWS/NOAA/outage data mocked
 ```
 
-The unit tests read `town.json`, so they keep passing after you adapt it, and the config test catches typos (bad regexes, malformed zone codes, a key pasted where an env var name belongs). `.github/workflows/tests.yml` runs everything on pull requests and pushes to `main`.
+The unit tests read `town.json`, so they keep passing after you adapt it, and the config test catches typos (bad regexes, malformed zone codes, a key pasted where an env var name belongs). The config tests also validate every `examples/*/town.json`. `.github/workflows/tests.yml` runs everything on pull requests and pushes to `main`.
 
 ## Maintenance
 
@@ -124,6 +144,10 @@ The unit tests read `town.json`, so they keep passing after you adapt it, and th
 ## Disclaimer
 
 A site built from this template is a community resource, not an official emergency channel. Always follow guidance from local officials, and call 911 in an emergency.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run tests, add an outage provider, or add a local resource section, plus some good first issues. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
