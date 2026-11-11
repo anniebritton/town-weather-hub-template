@@ -1,0 +1,34 @@
+name: Refresh outage data
+
+# Only does anything once you set outages.provider in town.json and add the
+# repository secret named by outages.api_key_env (default: OUTAGE_API_KEY).
+# Until then the script exits immediately without changing anything.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch outage data
+        env:
+          # The env var NAME must match outages.api_key_env in town.json
+          OUTAGE_API_KEY: ${{ secrets.OUTAGE_API_KEY }}
+        run: python3 scripts/fetch_outages.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "outage-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet && echo "No change" && exit 0
+          git commit -m "Update outage data"
+          git push

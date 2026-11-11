@@ -1,0 +1,14 @@
+{
+  "name": "town-weather-hub-template",
+  "private": true,
+  "description": "Tests for the town weather hub static site (the site itself has no build step).",
+  "scripts": {
+    "test": "npm run test:unit && npm run test:py && npm run test:e2e",
+    "test:unit": "node --test \"tests/unit/*.test.js\"",
+    "test:py": "python3 -m unittest discover -s tests/python -v",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Town Weather Hub — Weather, Power &amp; Coast</title>
+<meta name="description" content="One place for local residents to check weather alerts, power outages, marine conditions, wildfire risk, and long-term climate risk.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314526b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'/%3E%3Cpath d='M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'/%3E%3Cpath d='M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'/%3E%3C/svg%3E">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="hero-kicker" data-town="site.kicker">Your town</p>
+    <h1 data-town="site.name">Town Weather Hub</h1>
+    <p class="hero-tagline" data-town="site.tagline">Weather, power, and coastal conditions.</p>
+
+    <div class="status-row" role="group" aria-label="Current local status at a glance">
+      <div class="status-tile" id="tile-weather">
+        <span class="tile-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.947 12.65a4 4 0 0 0-5.925-4.128"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></svg>
+        </span>
+        <span class="tile-label">Weather</span>
+        <span class="tile-value skeleton">Checking…</span>
+        <span class="tile-sub"></span>
+      </div>
+      <div class="status-tile" id="tile-power">
+        <span class="tile-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+        </span>
+        <span class="tile-label">Power</span>
+        <span class="tile-value skeleton">Checking…</span>
+        <span class="tile-sub"></span>
+      </div>
+      <div class="status-tile" id="tile-seas">
+        <span class="tile-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
+        </span>
+        <span class="tile-label">Seas</span>
+        <span class="tile-value skeleton">Checking…</span>
+        <span class="tile-sub"></span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="section-nav" aria-label="Page sections">
+  <div class="wrap" role="tablist" aria-label="Information sections">
+    <a href="#alerts" id="tab-alerts" role="tab" aria-controls="alerts" aria-selected="true">Alerts &amp; Forecast</a>
+    <a href="#outages" id="tab-outages" role="tab" aria-controls="outages" aria-selected="false" tabindex="-1">Power</a>
+    <a href="#marine" id="tab-marine" role="tab" aria-controls="marine" aria-selected="false" tabindex="-1">Seas &amp; Wind</a>
+    <a href="#wildfire" id="tab-wildfire" role="tab" aria-controls="wildfire" aria-selected="false" tabindex="-1">Fire Risk</a>
+    <a href="#pests" id="tab-pests" role="tab" aria-controls="pests" aria-selected="false" tabindex="-1">Mosquitoes &amp; Ticks</a>
+    <a href="#climate" id="tab-climate" role="tab" aria-controls="climate" aria-selected="false" tabindex="-1">Climate</a>
+  </div>
+</nav>
+
+<main id="main">
+
+  <section id="storm-banner" class="storm-banner" hidden aria-label="Storm alert and preparedness checklist">
+    <div class="wrap">
+      <p class="storm-kicker">⚠ Storm alert for <span data-town="site.place">your town</span></p>
+      <h2 id="storm-headline">Severe weather is expected</h2>
+      <p id="storm-tide" class="storm-tide"></p>
+
+      <div class="storm-columns">
+        <div>
+          <h3>Do these now</h3>
+          <ul class="storm-list">
+            <li>Charge phones and backup batteries</li>
+            <li>Fill water jugs — and the bathtub</li>
+            <li>Set out flashlights (not candles)</li>
+            <li>Make sure you have a week of medications</li>
+            <li>Secure or haul boats; double your lines</li>
+            <li>Bring in anything that can blow away</li>
+            <li>Have a generator? Check fuel and give it a test run</li>
+          </ul>
+        </div>
+        <div>
+          <h3>If the power goes out</h3>
+          <ul class="storm-list">
+            <li>Keep fridge and freezer doors closed</li>
+            <li>Never run a generator indoors or in a garage</li>
+            <li>Stay far away from downed lines — call 911</li>
+            <li>Check on your nearest neighbor</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <a class="btn btn-storm" data-town-tel="outages.phone_dial" href="tel:">Call <span data-town="outages.utility_short">utility</span>: <span data-town="outages.phone_display">phone</span></a>
+        <a class="btn btn-storm-secondary" data-town-href="outages.report_url" href="#" target="_blank" rel="noopener">Report an outage online ↗</a>
+        <a class="btn btn-storm-secondary" href="fridge-card.html">Print the emergency card</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="alerts" class="card tab-panel" role="tabpanel" aria-labelledby="tab-alerts">
+    <div class="wrap">
+      <div class="card-head">
+        <span class="card-badge badge-alerts" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </span>
+        <div>
+          <h2 id="alerts-heading">Weather Alerts &amp; Forecast</h2>
+          <p class="section-note">Live watches and warnings from the National Weather Service for <span data-town="site.place">your town</span>.</p>
+        </div>
+      </div>
+      <div id="alerts-status" class="status-line" role="status" aria-live="polite"></div>
+      <div id="alerts-list" aria-live="polite">
+        <div class="skeleton-block" aria-hidden="true"></div>
+      </div>
+      <h3 class="sub-heading">Next few days</h3>
+      <div id="forecast-summary" class="forecast-grid">
+        <div class="skeleton-block" aria-hidden="true"></div>
+      </div>
+      <p class="cond-key">
+        Tinted cards mean a chance of rougher weather —
+        <span class="swatch" style="background:#fdf9e8"></span> some,
+        <span class="swatch" style="background:#fdf0dd"></span> more,
+        <span class="swatch" style="background:#fdecea"></span> severe.
+      </p>
+
+      <h3 class="sub-heading">Live radar</h3>
+      <figure class="radar-figure">
+        <img id="radar-img" src="" alt="Animated weather radar loop from the National Weather Service"
+             loading="lazy" width="600" height="550">
+      </figure>
+
+      <p class="fallback-link">
+        <a class="btn btn-secondary" id="forecast-link" href="https://forecast.weather.gov/" target="_blank" rel="noopener">
+          Full forecast on weather.gov ↗
+        </a>
+      </p>
+    </div>
+  </section>
+
+  <section id="outages" class="card tab-panel" role="tabpanel" aria-labelledby="tab-outages" hidden>
+    <div class="wrap">
+      <div class="card-head">
+        <span class="card-badge badge-power" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
+        </span>
+        <div>
+          <h2 id="outages-heading">Power Outages</h2>
+          <p class="section-note">Live outage numbers straight from <span data-town="outages.utility_name">your utility</span>'s public data, updated every 15 minutes.</p>
+        </div>
+      </div>
+
+      <div id="outage-stats" class="stat-grid" aria-live="polite">
+        <div class="skeleton-block" aria-hidden="true"></div>
+      </div>
+      <p id="outage-updated" class="data-timestamp"></p>
+
+      <div class="btn-row">
+        <a class="btn btn-primary" data-town-href="outages.report_url" href="#" target="_blank" rel="noopener">
+          Report an outage to <span data-town="outages.utility_short">your utility</span> ↗
+        </a>
+        <a class="btn btn-secondary" data-town-href="outages.map_url" href="#" target="_blank" rel="noopener">
+          Open the outage map ↗
+        </a>
+      </div>
+      <p class="note-box">
+        <strong>No power and no internet?</strong> Call <span data-town="outages.utility_short">your utility</span> at <a data-town-tel="outages.phone_dial" href="tel:"><strong data-town="outages.phone_display">phone</strong></a> to report an outage by phone.
+        Better yet, <a href="fridge-card.html"><strong>print the emergency fridge card</strong></a> now, while the lights are on.
+      </p>
+    </div>
+  </section>
+
+  <section id="marine" class="card tab-panel" role="tabpanel" aria-labelledby="tab-marine" hidden>
+    <div class="wrap">
+      <div class="card-head">
+        <span class="card-badge badge-marine" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 18H2a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4Z"/><path d="M21 14 10 2 3 14h18Z"/><path d="M10 2v16"/></svg>
+        </span>
+        <div>
+          <h2 id="marine-heading">Seas &amp; Wind</h2>
+          <p class="section-note" data-town="nws.marine_description">Wind, seas, and wave heights for your coastal waters.</p>
+        </div>
+      </div>
+
+      <h3 class="sub-heading">Conditions ahead</h3>
+      <div id="marine-status" class="status-line" role="status" aria-live="polite"></div>
+      <div id="marine-forecast" class="marine-grid">
+        <div class="skeleton-block" aria-hidden="true"></div>
+      </div>
+      <p class="cond-key">
+        Tinted cards mean a chance of rougher seas —
+        <span class="swatch" style="background:#fdf9e8"></span> some,
+        <span class="swatch" style="background:#fdf0dd"></span> more,
+        <span class="swatch" style="background:#fdecea"></span> severe.
+      </p>
+
+      <h3 class="sub-heading">Tides at <span data-town="site.place">your town</span> (<span data-town="tides.name">station</span>)</h3>
+      <div id="tides-strip" class="tides-strip" aria-live="polite">
+        <div class="skeleton-block" aria-hidden="true"></div>
+      </div>
+
+      <figure class="tide-chart-card">
+        <div class="tide-chart-head">
+          <div>
+            <h4>Next 24 hours</h4>
+            <p>High and low tide predictions in feet at <span data-town="site.place">your town</span>.</p>
+          </div>
+          <span class="tide-chart-key" aria-hidden="true">
+            <span class="tide-key-dot tide-key-high"></span> High
+            <span class="tide-key-dot tide-key-low"></span> Low
+          </span>
+        </div>
+        <div id="tide-chart" class="tide-chart" aria-live="polite">
+          <div class="skeleton-block" aria-hidden="true"></div>
+        </div>
+        <figcaption>
+          High and low points come from NOAA station <span data-town="tides.station">0000000</span>; the curve between them is an approximation to help
+          show timing. Heights use Mean Lower Low Water (MLLW) and are not observed water levels.
+          <a id="tide-table-link" href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">Open NOAA's full tide table ↗</a>
+        </figcaption>
+      </figure>
+
+      <h3 class="sub-heading">Live wind &amp; wave map</h3>
+      <div class="embed-frame embed-tall">
+        <iframe
+          id="windy-map"
+          src="about:blank"
+          title="Interactive wind and wave map from Windy.com"
+          loading="lazy">
+        </iframe>
+      </div>
+
+      <p class="fallback-link">
+        <a class="btn btn-secondary" id="marine-link" href="https://forecast.weather.gov/" target="_blank" rel="noopener">
+          Full marine forecast ↗
+        </a>
+        <a class="btn btn-secondary" href="https://www.ndbc.noaa.gov/" target="_blank" rel="noopener">
+          Live buoy readings (NDBC) ↗
+        </a>
+      </p>
+    </div>
+  </section>
+
+  <section id="wildfire" class="card tab-panel" role="tabpanel" aria-labelledby="tab-wildfire" hidden>
+    <div class="wrap">
+      <div class="card-head">
+        <span class="card-badge badge-fire" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+        </span>
+        <div>
+          <h2 id="wildfire-heading">Wildfire Risk</h2>
+          <p class="section-note">
+            The <span data-town="fire.agency">state forestry agency</span> rates fire danger daily during fire season (<span data-town="fire.season">spring through fall</span>):
+            <strong>Low</strong>, <strong>Moderate</strong>, <strong>High</strong>, <strong>Very High</strong>, or <strong>Extreme</strong>.
+            <span data-town="fire.burn_note">At Very High or Extreme, burn permits are often suspended</span> — check the map below before burning brush or lighting a campfire.
+          </p>
+        </div>
+      </div>
+
+      <div class="embed-frame embed-tall embed-fire">
+        <iframe
+          id="fire-map"
+          src="about:blank"
+          title="Daily wildfire danger map"
+          loading="lazy">
+        </iframe>
+      </div>
+      <ul class="fire-legend" aria-label="Fire danger color legend">
+        <li><span class="fire-swatch" style="background:#8bc48a"></span> Low</li>
+        <li><span class="fire-swatch" style="background:#9fb6cd"></span> Moderate</li>
+        <li><span class="fire-swatch" style="background:#f5ee9e"></span> High</li>
+        <li><span class="fire-swatch" style="background:#f5b971"></span> Very High</li>
+        <li><span class="fire-swatch" style="background:#ee9080"></span> Extreme</li>
+        <li><span class="fire-swatch" style="background:#f4f4f4"></span> Snow Cover</li>
+      </ul>
+
+      <p class="note-box">
+        Outside of fire season this map may be blank or inactive. To report a wildfire or unattended smoke at
+        any time of year, call <strong>911</strong>.
+      </p>
+      <p class="fallback-link">
+        <a class="btn btn-secondary" data-town-href="fire.map_url" href="#" target="_blank" rel="noopener">
+          Open the fire danger map full-screen ↗
+        </a>
+      </p>
+    </div>
+  </section>
+
+  <section id="pests" class="card tab-panel" role="tabpanel" aria-labelledby="tab-pests" hidden>
+    <div class="wrap">
+      <div class="card-head">
+        <span class="card-badge badge-climate" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>
+        </span>
+        <div>
+          <h2 id="pests-heading">Mosquitoes &amp; Ticks</h2>
+          <p class="section-note">
+            Estimated activity for today and the next two days, computed from the National Weather Service forecast
+            for <span data-town="site.place">your town</span> plus the time of year. These are <strong>weather-based estimates, not measurements</strong> —
+            treat them as a reason to grab the repellent or do a tick check, not as a guarantee either way.
+          </p>
+        </div>
+      </div>
+
+      <div class="pest-meters">
+        <div class="pest-meter" id="meter-mosquito">
+          <span class="meter-name">Mosquitoes today <em>(estimated)</em></span>
+          <span class="meter-level skeleton">Checking…</span>
+          <div class="meter-track" aria-hidden="true"><span class="meter-dot"></span></div>
+          <p class="meter-why"></p>
+          <div class="meter-days" aria-label="Estimated mosquito activity for the next three days"></div>
+        </div>
+        <div class="pest-meter" id="meter-tick">
+          <span class="meter-name">Ticks today <em>(estimated)</em></span>
+          <span class="meter-level skeleton">Checking…</span>
+          <div class="meter-track" aria-hidden="true"><span class="meter-dot"></span></div>
+          <p class="meter-why"></p>
+          <div class="meter-days" aria-label="Estimated tick activity for the next three days"></div>
+        </div>
+      </div>
+      <p class="cond-key">
+        Ticks can be active on <strong>any</strong> day above about 40°F, and mosquitoes can bite on
+        days rated Low. A low estimate is never a reason to skip precautions during a walk in tall grass or brush.
+      </p>
+
+      <details class="meter-method">
+        <summary>How these estimates work — and how well</summary>
+        <p>
+          Each meter combines today's hourly forecast (temperature, humidity, and wind) with the seasonal calendar
+          for a northern temperate climate (see the README to adjust it for your latitude). Mosquitoes are scored on the dusk hours, when they bite most; ticks on the daytime
+          hours. Temperature sets the ceiling, and dry air or wind pulls the estimate down. The seasonal calendar
+          follows the deer tick life cycle — the April–July nymph peak (when most Lyme transmission happens) and
+          the October–November adult season — and the June–August mosquito peak.
+        </p>
+        <p>
+          <strong>What we checked:</strong> ten seasonal scenarios (January cold snap, July heat wave, a breezy dry
+          summer day, mild October afternoon, and so on) were run through the model and compared against standard
+          vector-ecology guidance. An earlier version of the model failed this test and was corrected. Expect the
+          meter to run slightly hot on humid summer days.
+        </p>
+        <p>
+          <strong>What this can't tell you:</strong> weather is only part of the story. These estimates know nothing
+          about actual insect populations near your house — standing water, deer traffic, leaf litter, or how wet
+          the past month was all matter and aren't in the model. For real surveillance, use the sources below.
+        </p>
+      </details>
+
+      <h3 class="sub-heading">The real data</h3>
+      <ul class="resource-list" id="resources-pests"></ul>
+    </div>
+  </section>
+
+  <section id="climate" class="card tab-panel" role="tabpanel" aria-labelledby="tab-climate" hidden>
+    <div class="wrap">
+      <div class="card-head">
+        <span class="card-badge badge-climate" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></svg>
+        </span>
+        <div>
+          <h2 id="climate-heading">Long-Term Climate Risk</h2>
+          <p class="section-note">
+            How a changing climate touches life in <span data-town="site.place">your town</span> — the water around us, the water under us,
+            and the pests our milder winters invite.
+          </p>
+        </div>
+      </div>
+
+      <div class="topic-block topic-water">
+        <div class="topic-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
+          <h3>Rising seas &amp; flooding</h3>
+        </div>
+        <div class="topic-body">
+          <p class="section-note">
+            The map shows in red which parts of town would be below water level — use the slider to
+            see how the picture changes as the water rises.
+          </p>
+          <div class="water-control">
+            <label for="water-level">Water level above the highest tide:
+              <strong id="water-level-value">3 feet</strong>
+            </label>
+            <input type="range" id="water-level" min="1" max="10" step="1" value="3"
+                   aria-describedby="water-level-value">
+          </div>
+          <div class="embed-frame embed-tall">
+            <iframe id="climate-map"
+              src="about:blank"
+              title="Coastal flood risk map from Climate Central, highlighting areas below the selected water level"
+              loading="lazy">
+            </iframe>
+          </div>
+          <ul class="resource-list" id="resources-flood"></ul>
+        </div>
+      </div>
+
+      <div class="topic-block topic-drought">
+        <div class="topic-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>
+          <h3>Drought &amp; your well</h3>
+        </div>
+        <div class="topic-body">
+          <p class="section-note">
+            <span data-town="drought.well_note">Many homes here are on private wells.</span> This map shows
+            current drought conditions for <span data-town="drought.region_name">your region</span> — it updates every Thursday.
+          </p>
+          <figure class="radar-figure">
+            <img id="drought-img" src=""
+                 alt="Current U.S. Drought Monitor map"
+                 loading="lazy">
+          </figure>
+          <ul class="resource-list" id="resources-drought"></ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>
+      Data on this page comes from the National Weather Service, NOAA, your local utility and fire agency,
+      Windy.com, and Climate Central. This site does not replace official emergency instructions — always follow
+      guidance from local officials, and call <strong>911</strong> in an emergency.
+    </p>
+    <p><a href="fridge-card.html">Print the emergency fridge card</a> — key phone numbers and a checklist that work even when the power is out.</p>
+    <p id="last-updated"></p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+<script src="pests.js"></script>
+</body>
+</html>

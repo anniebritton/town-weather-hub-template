@@ -1,0 +1,22 @@
+{
+ "lastUpdated": "2000-01-01 12:00:00",
+ "totals": {
+  "customers": 100000,
+  "outages": 2,
+  "incidents": 1
+ },
+ "town": null,
+ "county": null,
+ "towns": [
+  {
+   "level": "town",
+   "opco": "EXAMPLE",
+   "county": "OTHERCOUNTY",
+   "town": "SAMPLEVILLE",
+   "customers": 300,
+   "Outages": 2,
+   "incidents": 1,
+   "EstRest": "01/01/2000 2:00:00 PM"
+  }
+ ]
+}
