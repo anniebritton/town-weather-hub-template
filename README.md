@@ -41,6 +41,8 @@ All town-specific values (coordinates, NWS office and zones, tide station, utili
 3. Turn on GitHub Pages: **Settings, Pages**, deploy from the `main` branch, root folder. (If you keep `.github/workflows/pages.yml`, choose **GitHub Actions** as the source instead, and delete its "Use the Southport example" step so your own `town.json` is published.)
 4. Optional, for outage data: **Settings, Actions, General**, allow workflows read/write permissions, then add your API key as a repository secret (see "Point the outage data at your utility").
 
+> **Using an AI coding agent?** Point it at [`AGENTS.md`](AGENTS.md). It has a step-by-step "set this up for my town" workflow (looks up your NWS grid and zones, fills in `town.json`, checks the result) and the rules for changing the template itself.
+
 ## Adapt it to your town
 
 ### 1. Name and place

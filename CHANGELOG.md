@@ -5,6 +5,7 @@ All notable changes to this template. Format follows [Keep a Changelog](https://
 ## [Unreleased]
 
 ### Added
+- `AGENTS.md`: instructions for AI coding agents to set the template up for a town or to contribute to it.
 - `examples/southport/`: a complete, real `town.json` for Southport Island, Maine, as a worked example.
 - GitHub Pages workflow that deploys the site with the Southport example as a live demo.
 - `scripts/check-config.js` (`npm run check-config`): lists `town.json` values that are still placeholders.

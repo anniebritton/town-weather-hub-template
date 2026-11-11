@@ -2,6 +2,8 @@
 
 Thanks for helping make this useful for more small communities. Bug reports, data-source notes for your region, and pull requests are all welcome. Please read the [Code of Conduct](CODE_OF_CONDUCT.md) first.
 
+AI coding agents: see [`AGENTS.md`](AGENTS.md).
+
 ## Run the tests
 
 You need Node 20+ and Python 3. Nothing needs internet access or API keys; all network calls are mocked.
