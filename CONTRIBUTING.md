@@ -23,7 +23,7 @@ To preview locally: `python3 -m http.server 8000` and open http://localhost:8000
 
 ## Ground rules
 
-- Everything town-specific belongs in `town.json`, not in `app.js` or `index.html`. If you need a new setting, add it to `town.json`, both worked examples under `examples/`, the config reference in the README, and `tests/unit/town-config.test.js`.
+- Everything town-specific belongs in `town.json`, not in `app.js` or `index.html`. If you need a new setting, add it to `town.json`, both worked examples under `examples/`, the config reference in `docs/config-reference.md`, and `tests/unit/town-config.test.js`.
 - Anything coastal-only gets a `data-feature="marine"` (or `tides`, `climate_coastal`) attribute so inland towns can switch it off in `town.json`.
 - Safety: remote data (NWS, NOAA, outage JSON) must reach the page as text or through `escapeHtml()`/`num()` from `town-utils.js`, URLs from config through `safeUrl()`, identifiers through `ident()`. Add a hostile-input test in `tests/e2e/security.spec.js` for any new sink.
 - Never show reassurance you can't back up: missing, malformed or stale data is "Unavailable", not "None" or "All clear".
@@ -39,7 +39,7 @@ Outage data is fetched server-side by `.github/workflows/outages.yml` because mo
 1. Add your provider name to the allowed values in `tests/unit/town-config.test.js` (`outages.provider`).
 2. In `scripts/fetch_outages.py`, add a branch in `main()` for your provider that fetches the data and returns the same JSON shape the page reads (see `build_result()`: `status`, `fetchedAt`, `lastUpdated`, `totals`, `town`, `county`, `towns`). Add a response-shape check next to `validate_response()` so junk is rejected and the last good file is kept.
 3. Keep parsing in a pure function and add a test with a recorded sample response in `tests/python/test_fetch_outages.py`, including junk and empty responses. Do not commit real keys. A unit test checks that what the script writes is accepted by the page (`checkOutageData()`).
-4. Document the provider and any config keys in the README ("Point the outage data at your utility" and the config reference).
+4. Document the provider and any config keys in `docs/outages.md` and `docs/config-reference.md`.
 
 ## Add a local resource section
 
@@ -47,7 +47,7 @@ Resource lists (`resources.flood`, `.drought`, `.pests`) are arrays of `{title, 
 
 1. Add the array to `town.json` and `examples/southport/town.json`.
 2. Render it in `index.html` and `app.js` the same way the existing lists are.
-3. Add it to the config reference in the README and, if needed, to the resource checks in `tests/unit/town-config.test.js`.
+3. Add it to the config reference in `docs/config-reference.md` and, if needed, to the resource checks in `tests/unit/town-config.test.js`.
 4. Add a Playwright check in `tests/e2e/` that the section appears.
 
 ## Good first issues
