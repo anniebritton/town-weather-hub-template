@@ -13,8 +13,29 @@ All notable changes to this template. Format follows [Keep a Changelog](https://
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue templates, a pull request template, and Dependabot updates.
 - Config tests now also validate every `examples/*/town.json`.
 
+- `features` switches in `town.json` (`marine`, `tides`, `climate_coastal`, `pests`): an inland town needs config changes only, and `examples/inland-desert/` shows it.
+- `TODO` convention for values you cannot verify: shown as a visible "TODO: add number", never a dialable link.
+- `scripts/check-config.js --online` (`npm run check-config:online`) verifies the NWS zone, grid, radar, marine zone and NOAA tide station.
+- `town-utils.js`: shared safety helpers (`safeUrl`, `telHref`, `ident`, `num`, `escapeHtml`, feature switches) used by both pages.
+- `scripts/run-tests.js`: `npm test` now runs all suites even if one fails.
+- Default local meanings for Red Flag Warning, Dust Storm and Extreme Heat.
+- `fire.embed` option, `outages.stale_after_minutes`, and a `Setup problem` card when NWS does not recognise the alert zone.
+- Hostile-input, robustness, outage-honesty, inland and every-example browser tests; python tests for junk API responses.
+
 ### Changed
 - README rewritten for people finding the template for the first time.
+- Outage pipeline: `fetch_outages.py` rejects malformed API responses and keeps the last good file, records `fetchedAt`, rewrites only on change or every ~45 minutes, and warns when the town matches nothing. `outages.yml` has a concurrency group, rebases before pushing, exits early when disabled, fails loudly, and starts the Pages deploy (the schedule is commented out by default). `pages.yml` now publishes `data/`.
+- The Southport overlay in `pages.yml` runs only in the upstream template repository, so a user's copy always deploys its own `town.json`.
+- The Power section shows "Unavailable" (never "On"/"None") when the provider is `none`, the data is missing or malformed, a sample, or older than `stale_after_minutes`. The bundled `data/outages.json` is marked `"sample": true`.
+- The page shows a visible error when `town.json` is missing, invalid or lacks a required block, and keeps working when optional blocks (resources, fire, alerts, ...) are absent.
+- Cards that are tinted for rough weather now also say so in words; minimum font size is 0.8rem; the radar image has a descriptive alt text.
+- Actions updated to current majors; Dependabot no longer watches pip (there is no manifest).
+- The template's default drought map now uses `current_conus_trd.png` (the previous `current_us_trd.png` returns 404).
+
+### Fixed (security)
+- Remote NWS, NOAA and outage data can no longer inject markup or script into the page (temperature and outage counts were rendered unescaped).
+- `javascript:`, `data:` and `http:` URLs in `town.json` are never used for links, images or iframes; third-party iframes are sandboxed and send no referrer; identifiers that end up in URLs must match their documented shape.
+- A bad regex in `local_meaning` or `alerts.storm_event_pattern` no longer hides real alerts.
 
 ## [0.1.0]
 

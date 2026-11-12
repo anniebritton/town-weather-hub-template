@@ -1,0 +1,164 @@
+{
+  "_comment": "Everything town-specific lives in this file. The values below are for a FICTIONAL town (Exampleton) and are placeholders: replace every one. A value you cannot verify should be the text TODO: the page shows it as a visible TODO and never as a dialable number. Optional sections are switched on and off in \"features\". See README.md for the full reference.",
+
+  "features": {
+    "marine": true,
+    "tides": true,
+    "climate_coastal": true,
+    "pests": true
+  },
+
+  "site": {
+    "name": "Exampleton Weather Hub",
+    "short_name": "Weather Hub",
+    "place": "Exampleton",
+    "kicker": "Exampleton, Anystate",
+    "tagline": "Weather, power, and coastal conditions for Exampleton.",
+    "description": "One place for Exampleton, Anystate residents to check weather alerts, power outages, marine conditions, wildfire risk, and long-term climate risk.",
+    "app_id": "town_weather_hub",
+    "public_url": "https://example.com/town-weather-hub/",
+    "region_name": "Anystate",
+    "area_name": "Example County"
+  },
+
+  "location": {
+    "lat": 39.8283,
+    "lon": -98.5795,
+    "timezone": "America/Chicago",
+    "map_zoom": 9
+  },
+
+  "nws": {
+    "office": "XXX",
+    "grid_x": 0,
+    "grid_y": 0,
+    "alerts_zone": "XXZ000",
+    "marine_zone": "XXZ001",
+    "marine_description": "Wind, seas, and wave heights for the coastal waters off Exampleton (describe your marine zone's extent here).",
+    "radar_station": "KXXX",
+    "radar_name": "the National Weather Service radar nearest Exampleton"
+  },
+
+  "tides": {
+    "station": "0000000",
+    "name": "Exampleton Harbor"
+  },
+
+  "outages": {
+    "provider": "none",
+    "utility_name": "Example Electric",
+    "utility_short": "Example Electric",
+    "phone_display": "TODO",
+    "phone_dial": "TODO",
+    "report_url": "https://example.com/report-outage",
+    "map_url": "https://example.com/outage-map",
+    "api_url": "https://example.com/api/outagedata",
+    "api_key_header": "ocp-apim-subscription-key",
+    "api_key_env": "OUTAGE_API_KEY",
+    "match_town": "EXAMPLETON",
+    "match_county": "EXAMPLE",
+    "county_label": "Example County",
+    "timestamp_zone_label": "Central",
+    "data_file": "data/outages.json",
+    "stale_after_minutes": 90
+  },
+
+  "alerts": {
+    "storm_severities": ["Extreme", "Severe"],
+    "storm_event_pattern": "hurricane|tropical|surge|blizzard|ice storm|gale|^storm warning|high wind warning|winter storm warning|tornado",
+    "demo_event": "Hurricane Warning"
+  },
+
+  "thresholds": {
+    "wind_watch_mph": 20,
+    "wind_caution_mph": 30,
+    "gust_watch_mph": 20,
+    "gust_caution_mph": 30,
+    "seas_watch_ft": 5,
+    "seas_caution_ft": 8
+  },
+
+  "fire": {
+    "agency": "Anystate Forest Service",
+    "map_url": "https://example.com/fire-danger-map",
+    "embed": true,
+    "map_title": "Anystate Forest Service daily wildfire danger map",
+    "season": "spring through fall",
+    "burn_note": "At Very High or Extreme, burn permits are often suspended"
+  },
+
+  "drought": {
+    "image_url": "https://droughtmonitor.unl.edu/data/png/current/current_conus_trd.png",
+    "image_alt": "Current U.S. Drought Monitor map, showing drought conditions by region",
+    "region_name": "the continental U.S.",
+    "well_note": "Many homes here are on private wells, and dry summers are becoming more common."
+  },
+
+  "resources": {
+    "flood": [
+      { "title": "County planning or emergency management", "url": "https://example.com/county", "description": "Local maps and studies: flood risk, sea level rise, and community resilience planning." },
+      { "title": "NOAA Sea Level Rise Viewer", "url": "https://coast.noaa.gov/slr/", "description": "National tool with elevation data; good for comparing your town to nearby towns." }
+    ],
+    "drought": [
+      { "title": "State drought task force", "url": "https://example.com/drought", "description": "State drought updates, and the place to report a dry well." },
+      { "title": "State private well water guidance", "url": "https://example.com/well-water", "description": "Private wells are usually not regulated, so testing is up to you." }
+    ],
+    "pests": [
+      { "title": "Today's mosquito forecast", "url": "https://www.accuweather.com/", "description": "A daily mosquito activity index from AccuWeather. Replace with the link for your town." },
+      { "title": "30-Day Tick Disease Forecast Maps", "url": "https://petdiseasealerts.org/forecast-map/", "description": "County-level Lyme and tick-borne disease forecasts from the Companion Animal Parasite Council." },
+      { "title": "State health department: mosquito-borne illness", "url": "https://example.com/mosquitoes", "description": "Seasonal updates on local mosquito-borne disease activity." }
+    ]
+  },
+
+  "fridge_card": {
+    "title": "Exampleton Emergency Card",
+    "description": "Printable one-page emergency reference card for Exampleton residents.",
+    "phones": [
+      { "label": "Life-threatening emergency, fire, or downed power line touching anything", "number": "911", "urgent": true },
+      { "label": "Report a power outage: Example Electric (24 hours)", "number": "TODO" },
+      { "label": "Weather updates when internet is out: NOAA Weather Radio", "number": "162.400–162.550 MHz" }
+    ],
+    "write_ins": [
+      "Exampleton Town Office",
+      "Nearest neighbor",
+      "Family check-in contact",
+      "Doctor / pharmacy"
+    ],
+    "qr_alt": "QR code linking to the Exampleton Weather Hub website"
+  },
+
+  "local_meaning": [
+    { "pattern": "red flag|fire weather|extreme fire",
+      "text": "Fire can start and spread quickly in dry, windy weather. Don't burn outdoors, and avoid anything that throws sparks. Know your way out and keep your phone charged." },
+    { "pattern": "dust storm|blowing dust|dust advisory",
+      "text": "Visibility on the road can drop to nearly zero without warning. If caught driving, pull off the road, turn off your lights, take your foot off the brake, and wait it out. Stay indoors if you can." },
+    { "pattern": "excessive heat|extreme heat|heat advisory",
+      "text": "Dangerous heat. Check on older neighbors and anyone without air conditioning, drink water steadily, and take breaks indoors. Never leave people or pets in a parked car." },
+    { "pattern": "gale|^storm warning|hurricane force wind",
+      "text": "Dangerous winds on the water. Boats should be back on their moorings or hauled; check your lines and fenders now. Expect scattered power outages from limbs on lines; charge your phone while you can." },
+    { "pattern": "hurricane|tropical storm",
+      "text": "Expect damaging wind, coastal flooding, and multi-day power outages. Haul boats or double all lines now. If officials suggest leaving low-lying areas, do it early. Fill water jugs; wells need electric pumps." },
+    { "pattern": "storm surge|coastal flood",
+      "text": "Water may cover low sections of shore roads and docks, especially near high tide. Move cars, gear, and anything floatable above the shoreline before the peak. Don't drive through water on the road." },
+    { "pattern": "high wind|wind advisory",
+      "text": "Gusts can drop limbs onto power lines, so outages are possible. Secure trash cans, deck furniture, and anything that can blow into a line or a window. Take extra care in a high-sided vehicle." },
+    { "pattern": "blizzard|winter storm|heavy snow",
+      "text": "Plows reach side roads slowly, so plan to stay put. Stock up before it starts, keep the fuel tank full, and locate your shovel now. If you rely on medical equipment, arrange backup power today." },
+    { "pattern": "ice storm|freezing rain",
+      "text": "Ice is a common cause of multi-day outages. Charge everything, fill water jugs, and plan for warmth without power. Never heat with a gas stove or grill indoors. Stay off the roads until they are treated." },
+    { "pattern": "severe thunderstorm",
+      "text": "Brief but violent wind and lightning. Get off the water and out of the yard. Unplug sensitive electronics." },
+    { "pattern": "tornado",
+      "text": "Go to the lowest floor, an interior room, away from windows, now. A basement beats any room with glass." },
+    { "pattern": "flood",
+      "text": "Never drive through water on a road; two feet of water floats a car. Culverts can wash out; report road damage to the town office." },
+    { "pattern": "dense fog",
+      "text": "Near-zero visibility on the water and on the roads. Delay boat trips; use low beams and slow way down." },
+    { "pattern": "heat",
+      "text": "Check on older neighbors without air conditioning, mornings and evenings. Drink water steadily. Find a public place to cool off." },
+    { "pattern": "small craft",
+      "text": "Conditions are rough for skiffs, kayaks, and small boats. If you don't have to go out, don't. If you do, file a float plan with someone on shore and wear the life jacket." },
+    { "pattern": "rip current|surf",
+      "text": "Stay off wet rocks and ledges facing open water; waves arrive in sets, and the big one comes without warning. Keep a close eye on children near the shore." }
+  ]
+}

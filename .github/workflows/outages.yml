@@ -1,34 +1,59 @@
 name: Refresh outage data
 
-# Only does anything once you set outages.provider in town.json and add the
-# repository secret named by outages.api_key_env (default: OUTAGE_API_KEY).
-# Until then the script exits immediately without changing anything.
+# Only does anything once you set outages.provider in town.json and add the repository secret named by
+# outages.api_key_env (default: OUTAGE_API_KEY). Until then the first step reports "disabled" and
+# the rest are skipped, so enabling the schedule costs almost nothing.
+#
+# The schedule is OFF in the template. After you have set up a provider and the secret, uncomment it.
+# (GitHub also pauses scheduled workflows after 60 days without repository activity.)
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
+  # schedule:
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # commit data/outages.json
+  actions: write    # start the Pages deploy after new data is committed
+
+concurrency:
+  group: outages
+  cancel-in-progress: false
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Fetch outage data
+      - name: Is outage fetching enabled?
+        id: enabled
         env:
           # The env var NAME must match outages.api_key_env in town.json
           OUTAGE_API_KEY: ${{ secrets.OUTAGE_API_KEY }}
+        run: python3 scripts/fetch_outages.py --enabled | sed 's/^/enabled=/' >> "$GITHUB_OUTPUT"
+
+      - name: Fetch outage data
+        if: steps.enabled.outputs.enabled == 'true'
+        env:
+          OUTAGE_API_KEY: ${{ secrets.OUTAGE_API_KEY }}
         run: python3 scripts/fetch_outages.py
 
-      - name: Commit if changed
+      - name: Commit and redeploy if the data changed
+        if: steps.enabled.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           git config user.name "outage-bot"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/
-          git diff --cached --quiet && echo "No change" && exit 0
+          if git diff --cached --quiet; then
+            echo "No change"
+            exit 0
+          fi
           git commit -m "Update outage data"
-          git push
+          git pull --rebase origin "$BRANCH"
+          git push origin "HEAD:$BRANCH"
+          # Pushes made with GITHUB_TOKEN do not trigger other workflows, but workflow_dispatch is allowed
+          gh workflow run pages.yml --ref "$BRANCH"

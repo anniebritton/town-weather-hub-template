@@ -1,16 +1,12 @@
 // The page as served, against mocked NWS, NOAA tides, and a fixture outage file.
 // (Nothing live: these tests need no internet and no keys.)
 const { test, expect } = require("@playwright/test");
-const { mockNetwork, town } = require("./helpers");
+const { mockNetwork, town, freshOutages, OUTAGES_ON } = require("./helpers");
 
 const o = town.outages;
-const OUTAGES = {
-  lastUpdated: "2000-01-01 12:00:00",
-  totals: { customers: 100000, outages: 12, incidents: 4 },
-  town: { level: "town", town: o.match_town, Outages: 5 },
-  county: { county: o.match_county, Outages: 9 },
-  towns: [],
-};
+const OUTAGES = freshOutages();
+// The template ships with outages.provider "none"; these specs switch live outages on.
+const NET = { outages: OUTAGES, townPatch: OUTAGES_ON };
 
 test.beforeEach(async ({ page }, testInfo) => {
   const errors = [];
@@ -23,18 +19,24 @@ test.afterEach(async ({}, testInfo) => {
 });
 
 test("page text comes from town.json", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/");
   await expect(page.locator("h1")).toHaveText(town.site.name);
   await expect(page.locator(".hero-kicker")).toHaveText(town.site.kicker);
   await expect(page).toHaveTitle(new RegExp(town.site.name));
   await expect(page.locator("#radar-img")).toHaveAttribute("src", new RegExp(`${town.nws.radar_station}_loop\\.gif`));
-  await expect(page.locator(".btn-storm").first()).toHaveAttribute("href", `tel:${o.phone_dial}`);
+  const call = page.locator(".btn-storm").first();
+  if (/^TODO/.test(o.phone_dial)) {
+    await expect(call).not.toHaveAttribute("href", /./); // an unverified number is never dialable
+    await expect(call).toContainText("TODO: add number");
+  } else {
+    await expect(call).toHaveAttribute("href", `tel:${o.phone_dial}`);
+  }
   await expect(page.locator("#resources-pests li")).toHaveCount(town.resources.pests.length);
 });
 
 test("all three status tiles load values", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/");
   for (const id of ["tile-weather", "tile-power", "tile-seas"]) {
     const value = page.locator(`#${id} .tile-value`);
@@ -44,14 +46,14 @@ test("all three status tiles load values", async ({ page }) => {
 });
 
 test("no alerts shows All clear; an alert shows its event and local meaning", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/");
   await expect(page.locator("#tile-weather .tile-value")).toHaveText("All clear");
   await expect(page.locator("#alerts-list")).toContainText(`No active weather alerts for ${town.site.place}`);
 
   const alert = { properties: { severity: "Moderate", event: "Small Craft Advisory", headline: "SCA", description: "Rough seas.", effective: new Date().toISOString(), expires: new Date().toISOString() } };
   const page2 = await page.context().newPage();
-  await mockNetwork(page2, { outages: OUTAGES, alerts: [alert] });
+  await mockNetwork(page2, { ...NET, alerts: [alert] });
   await page2.goto("/");
   await expect(page2.locator("#tile-weather .tile-value")).toHaveText("Small Craft Advisory");
   await expect(page2.locator("#alerts-list .alert-card")).toHaveCount(1);
@@ -59,7 +61,7 @@ test("no alerts shows All clear; an alert shows its event and local meaning", as
 });
 
 test("forecast shows the next four NWS periods with temperatures", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/");
   const cards = page.locator("#forecast-summary .forecast-card");
   await expect(cards).toHaveCount(4);
@@ -69,7 +71,7 @@ test("forecast shows the next four NWS periods with temperatures", async ({ page
 });
 
 test("power section matches the outage data file", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/#outages");
   const stats = page.locator("#outage-stats .stat-card");
   await expect(stats).toHaveCount(3);
@@ -81,7 +83,7 @@ test("power section matches the outage data file", async ({ page }) => {
 });
 
 test("marine forecast parses the configured marine zone", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/#marine");
   const periods = page.locator("#marine-forecast .marine-period");
   await expect(periods.first()).toBeVisible();
@@ -91,7 +93,7 @@ test("marine forecast parses the configured marine zone", async ({ page }) => {
 });
 
 test("tides show the next four highs and lows and a 24-hour chart", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/#marine");
   const chips = page.locator("#tides-strip .tide-chip");
   await expect(chips).toHaveCount(4);
@@ -100,7 +102,7 @@ test("tides show the next four highs and lows and a 24-hour chart", async ({ pag
 });
 
 test("pest meters score today from the hourly forecast", async ({ page }) => {
-  await mockNetwork(page, { outages: OUTAGES });
+  await mockNetwork(page, NET);
   await page.goto("/#pests");
   for (const id of ["meter-mosquito", "meter-tick"]) {
     const level = page.locator(`#${id} .meter-level`);

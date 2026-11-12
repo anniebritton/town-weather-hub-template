@@ -1,0 +1,93 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { safeUrl, telHref, isTodo, num, ident, SHAPES, feature, escapeHtml, applyBindings, applyFeatures } = require("../../town-utils.js");
+
+test("safeUrl accepts only https and normalises it", () => {
+  assert.equal(safeUrl("https://example.org/a b"), "https://example.org/a%20b");
+  assert.equal(safeUrl("HTTPS://Example.org/"), "https://example.org/");
+  for (const bad of ["javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,<script>1</script>", "http://example.org/",
+    "ftp://example.org/", "//example.org/", "example.org", "", "TODO", "TODO: add a link", " ", null, undefined, 5, {}, ["https://a.b/"]]) {
+    assert.equal(safeUrl(bad), null, String(bad));
+  }
+});
+
+test("telHref makes a link only for a plausible number, never for TODO", () => {
+  assert.equal(telHref("1-800-555-0100"), "tel:18005550100");
+  assert.equal(telHref("+1 (207) 555-0100"), "tel:+12075550100");
+  for (const bad of ["TODO", "todo: add number", "911x", "12", "javascript:1", "", null, 18005550100]) assert.equal(telHref(bad), null, String(bad));
+});
+
+test("isTodo recognises the placeholder convention", () => {
+  for (const yes of ["TODO", "todo", "  TODO: fill in", "TODO add"]) assert.equal(isTodo(yes), true, yes);
+  for (const no of ["TODOS", "Mastodon", "", null, undefined, 0]) assert.equal(isTodo(no), false, String(no));
+});
+
+test("num accepts only finite numbers, not numeric strings or markup", () => {
+  assert.equal(num(5), 5);
+  assert.equal(num(0), 0);
+  for (const bad of ["5", "<img src=x>", NaN, Infinity, null, undefined, {}, []]) assert.equal(num(bad), null, String(bad));
+});
+
+test("ident enforces the documented identifier shapes", () => {
+  assert.equal(ident("GYX", SHAPES.office), "GYX");
+  assert.equal(ident('"><img src=x>', SHAPES.office), null);
+  assert.equal(ident("MEZ026", SHAPES.alertsZone), "MEZ026");
+  assert.equal(ident("MEC015", SHAPES.alertsZone), "MEC015");
+  assert.equal(ident("8416908", SHAPES.tideStation), "8416908");
+  assert.equal(ident("84/../x", SHAPES.tideStation), null);
+  assert.equal(ident(8416908, SHAPES.tideStation), null);
+});
+
+test("features default to on, and turning marine off turns tides off", () => {
+  assert.equal(feature({}, "marine"), true);
+  assert.equal(feature(undefined, "pests"), true);
+  assert.equal(feature({ features: { marine: false } }, "tides"), false);
+  assert.equal(feature({ features: { marine: true, tides: false } }, "tides"), false);
+  assert.equal(feature({ features: { pests: false } }, "pests"), false);
+});
+
+test("escapeHtml escapes the five dangerous characters", () => {
+  assert.equal(escapeHtml(`<a href="x" onclick='y'>&`), "&lt;a href=&quot;x&quot; onclick=&#39;y&#39;&gt;&amp;");
+  assert.equal(escapeHtml(null), "");
+});
+
+// A tiny stand-in for the DOM, just enough for applyBindings / applyFeatures
+function fakeDoc(nodes) {
+  const make = (n) => ({
+    ...n, attrs: {}, classes: new Set(), hidden: false, removed: false,
+    get dataset() { return n.dataset; },
+    setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; },
+    classList: { add: (c) => made.find((m) => m.i === n.i).classes.add(c) }, remove() { this.removed = true; },
+  });
+  const made = nodes.map((n, i) => Object.assign(make({ ...n, i }), { i }));
+  return { made, querySelectorAll: (sel) => made.filter((n) => sel.includes(Object.keys(n.dataset)[0]?.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()))) };
+}
+
+test("applyBindings: unsafe links are hidden, TODO phones are never dialable", () => {
+  const town = { outages: { map_url: "javascript:alert(1)", report_url: "https://ok.example/", phone_dial: "TODO", phone_display: "TODO" } };
+  const doc = {
+    nodes: [
+      { dataset: { townHref: "outages.map_url" }, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; }, hidden: false },
+      { dataset: { townHref: "outages.report_url" }, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; }, hidden: false },
+      { dataset: { townTel: "outages.phone_dial" }, attrs: { href: "tel:" }, classes: new Set(), classList: { add() {} }, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; } },
+      { dataset: { town: "outages.phone_display" }, textContent: "" },
+    ],
+    querySelectorAll(sel) {
+      const key = sel.match(/data-([a-z-]+)/)[1].replace(/-(\w)/g, (_, c) => c.toUpperCase());
+      return this.nodes.filter((n) => key in n.dataset);
+    },
+  };
+  applyBindings(town, doc);
+  assert.equal(doc.nodes[0].hidden, true);
+  assert.equal(doc.nodes[0].attrs.href, undefined);
+  assert.equal(doc.nodes[1].attrs.href, "https://ok.example/");
+  assert.equal(doc.nodes[2].attrs.href, undefined, "no tel: link for TODO");
+  assert.equal(doc.nodes[3].textContent, "TODO: add number");
+});
+
+test("applyFeatures removes elements for switched-off features", () => {
+  const nodes = [{ dataset: { feature: "marine" } }, { dataset: { feature: "pests" } }, { dataset: { feature: "tides" } }]
+    .map((n) => ({ ...n, removed: false, remove() { this.removed = true; } }));
+  applyFeatures({ features: { marine: false } }, { querySelectorAll: () => nodes });
+  assert.deepEqual(nodes.map((n) => n.removed), [true, false, true]);
+});

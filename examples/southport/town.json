@@ -1,5 +1,12 @@
 {
   "_comment": "Worked example: the real configuration for Southport Island, Maine. Copy it over town.json to see the template filled in for an actual town. Public facts only; the outage API key is a GitHub secret and is never stored here.",
+  "features": {
+    "marine": true,
+    "tides": true,
+    "climate_coastal": true,
+    "pests": true
+  },
+
   "site": {
     "name": "Island Weather Hub",
     "short_name": "Weather Hub",
@@ -47,7 +54,8 @@
     "match_county": "LINCOLN",
     "county_label": "Lincoln County",
     "timestamp_zone_label": "Eastern",
-    "data_file": "data/outages.json"
+    "data_file": "data/outages.json",
+    "stale_after_minutes": 90
   },
   "alerts": {
     "storm_severities": [
@@ -68,6 +76,7 @@
   "fire": {
     "agency": "Maine Forest Service",
     "map_url": "https://mainefireweather.org/",
+    "embed": true,
     "map_title": "Maine Forest Service daily wildfire danger map, positioned over the Midcoast",
     "season": "late March to late November",
     "burn_note": "At Very High or Extreme, burn permits are often suspended"

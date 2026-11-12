@@ -1,9 +1,13 @@
-name: Deploy demo to GitHub Pages
+name: Deploy to GitHub Pages
 
-# Publishes the static site with the Southport example config, so the live demo shows a real town
-# while town.json in the repo stays generic. Requires Settings > Pages > Source: "GitHub Actions".
-# If you fork this template for your own town, delete the "Use the Southport example" step so your
-# own town.json is deployed.
+# Publishes the static site. Requires Settings > Pages > Source: "GitHub Actions".
+#
+# In the upstream template repository this deploys the Southport example config so the live demo shows
+# a real town. In ANY OTHER repository (your copy of the template) it deploys your own town.json, so
+# your site can never show another town's phone numbers. Nothing here needs editing for that.
+#
+# It also runs after the "Refresh outage data" workflow (a push made with GITHUB_TOKEN does not
+# trigger other workflows, so that workflow starts this one explicitly).
 
 on:
   push:
@@ -19,6 +23,9 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  UPSTREAM_TEMPLATE: anniebritton/town-weather-hub-template
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -26,20 +33,26 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/configure-pages@v6
 
       - name: Assemble site
         run: |
           mkdir _site
-          cp index.html fridge-card.html app.js pests.js styles.css town.json _site/
-          cp -r assets _site/
-          # data/outages.json in the repo is a fictional sample, so the demo leaves it out; the
-          # page then shows its "outage data unavailable" state with working utility links.
+          cp index.html fridge-card.html app.js town-utils.js pests.js styles.css town.json _site/
+          cp -r assets data _site/
 
-      - name: Use the Southport example (demo only)
+      - name: Use the Southport example (upstream demo only)
+        if: github.repository == env.UPSTREAM_TEMPLATE
         run: cp examples/southport/town.json _site/town.json
+
+      - name: Warn about unfinished town.json (your own site)
+        if: github.repository != env.UPSTREAM_TEMPLATE
+        continue-on-error: true
+        run: |
+          # Does not block the deploy; shows up as annotations on the run.
+          node scripts/check-config.js | sed 's/^/::warning::/' | head -50
 
       - uses: actions/upload-pages-artifact@v5
         with:

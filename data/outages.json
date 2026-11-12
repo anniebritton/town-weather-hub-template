@@ -1,4 +1,6 @@
 {
+ "sample": true,
+ "_comment": "FICTIONAL sample so the repo has a file of the right shape. The page ignores any file marked sample:true and shows 'Unavailable'; scripts/fetch_outages.py replaces it with real data.",
  "lastUpdated": "2000-01-01 12:00:00",
  "totals": {
   "customers": 100000,

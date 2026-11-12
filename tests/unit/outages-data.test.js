@@ -42,3 +42,36 @@ test("data.town is the town-level row for the configured town, not a street row"
   const row = data.towns.find((t) => t.level === "town" && t.town.toUpperCase() === want) ?? null;
   assert.deepEqual(data.town, row);
 });
+
+
+// ---- the file as the page will actually receive it ----
+const { execFileSync } = require("node:child_process");
+const { checkOutageData } = require("../../app.js");
+
+test("the bundled sample is marked as a sample, so the page never shows it as real data", () => {
+  assert.equal(data.sample, true);
+  assert.equal(checkOutageData(data).ok, false);
+});
+
+test("what scripts/fetch_outages.py writes is accepted by the page (writer/reader contract)", () => {
+  const code = `
+import json, sys
+sys.path.insert(0, "scripts")
+import fetch_outages as f
+county = {"lastUpdated": "2030-06-01 07:25:00", "customers": 10, "outages": 3, "incidents": 1,
+          "features": [{"properties": {"county": "EXAMPLE", "Outages": 3}}]}
+town = {"features": [{"properties": {"level": "town", "town": "EXAMPLETON", "Outages": 3}}]}
+f.validate_response(county, town)
+print(json.dumps(f.build_result(county, town, {"match_town": "EXAMPLETON", "match_county": "EXAMPLE"})))`;
+  let out;
+  try {
+    out = execFileSync("python3", ["-c", code], { cwd: path.join(__dirname, "..", ".."), encoding: "utf8" });
+  } catch (e) {
+    if (e.code === "ENOENT") return; // no python on this machine; the python suite covers the writer
+    throw e;
+  }
+  const written = JSON.parse(out);
+  const verdict = checkOutageData(written, 90, Date.parse(written.fetchedAt) + 60_000);
+  assert.deepEqual(verdict, { ok: true });
+  assert.equal(written.town.Outages, 3);
+});

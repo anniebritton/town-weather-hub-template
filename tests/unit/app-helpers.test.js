@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const town = require("../../town.json");
 const {
   setTown, nwsUrls, hazardLevel, localMeaning, isStormAlert, seasHeadline, extractZoneSection, parseMarinePeriods,
-  parseMarineDetail, compressSeas, compressWind, compressWaves, windArrow,
+  parseMarineDetail, compressSeas, compressWind, compressWaves, windArrow, checkOutageData, findConfigProblem, hazardTag,
+  tideStation, tideTableUrl,
 } = require("../../app.js");
 
 setTown(town);
@@ -142,4 +143,88 @@ test("each alert type gets guidance from the matching local_meaning entry, in or
     assert.equal(localMeaning(event), winner.text);
   }
   assert.equal(localMeaning("Frost Advisory"), null);
+});
+
+
+/* ---------- safety and robustness (added with the review fixes) ---------- */
+
+test("a broken regex in local_meaning is skipped; later entries still match", () => {
+  setTown({ ...town, local_meaning: [{ pattern: "(", text: "never" }, { pattern: "red flag", text: "fire danger" }] });
+  assert.equal(localMeaning("Red Flag Warning"), "fire danger");
+  assert.equal(localMeaning(undefined), null);
+  assert.equal(localMeaning({ not: "a string" }), null);
+  setTown(town);
+});
+
+test("a broken storm_event_pattern never throws, and severity still triggers storm mode", () => {
+  setTown({ ...town, alerts: { ...town.alerts, storm_event_pattern: "(" } });
+  assert.equal(isStormAlert({ event: "Anything", severity: "Severe" }), true);
+  assert.equal(isStormAlert({ event: "Anything", severity: "Minor" }), false);
+  setTown({ ...town, alerts: undefined });
+  assert.equal(isStormAlert({ severity: "Extreme" }), true);
+  setTown(town);
+});
+
+test("nwsUrls refuses identifiers that are not the right shape", () => {
+  for (const nws of [{ office: '"><x>' }, { alerts_zone: "../x" }, { grid_x: "1" }, { grid_y: 1.5 }]) {
+    setTown({ ...town, nws: { ...town.nws, ...nws } });
+    assert.throws(() => nwsUrls(), /town\.json/);
+  }
+  setTown(town);
+});
+
+test("tide station and table link are validated", () => {
+  setTown({ ...town, tides: { station: '1"><x>' } });
+  assert.equal(tideStation(), null);
+  assert.equal(tideTableUrl(), "https://tidesandcurrents.noaa.gov/");
+  setTown(town);
+  assert.match(tideTableUrl(), /id=0000000$/);
+});
+
+test("findConfigProblem names what is wrong with town.json", () => {
+  assert.equal(findConfigProblem(town), null);
+  assert.match(findConfigProblem(null), /JSON object/);
+  assert.match(findConfigProblem([]), /JSON object/);
+  const noNws = { ...town }; delete noNws.nws;
+  assert.match(findConfigProblem(noNws), /"nws"/);
+  const none = {};
+  assert.match(findConfigProblem(none), /"site", "location", "nws"/);
+  assert.match(findConfigProblem({ ...town, site: { ...town.site, place: " " } }), /site\.place/);
+});
+
+test("hazardTag always explains a tint in words", () => {
+  assert.equal(hazardTag(""), "");
+  for (const level of ["cond-watch", "cond-caution", "cond-severe"]) assert.match(hazardTag(level), /cond-tag">[^<]{10,}</);
+});
+
+/* ---------- outage data: when is it safe to show as current? ---------- */
+
+const NOW = Date.parse("2030-06-01T12:00:00Z");
+const good = (over = {}) => ({
+  status: "ok", fetchedAt: "2030-06-01T11:30:00Z", lastUpdated: "2030-06-01 07:25:00",
+  totals: { customers: 100, outages: 3, incidents: 1 }, town: null, county: { county: "X", Outages: 3 }, towns: [], ...over,
+});
+
+test("checkOutageData accepts fresh, well-formed data", () => {
+  assert.deepEqual(checkOutageData(good(), 90, NOW), { ok: true });
+  assert.deepEqual(checkOutageData(good({ town: { level: "town", town: "X", Outages: 4 } }), 90, NOW), { ok: true });
+});
+
+test("checkOutageData rejects anything that could mislead", () => {
+  const cases = {
+    "not an object": null, "array": [], "empty": {}, "sample": good({ sample: true }),
+    "status error": good({ status: "error" }), "no lastUpdated": good({ lastUpdated: "" }),
+    "null totals": good({ totals: { outages: null } }), "string total": good({ totals: { outages: "3" } }),
+    "string town count": good({ town: { Outages: "<img>" } }), "no town key": (() => { const g = good(); delete g.town; return g; })(),
+    "no fetchedAt": good({ fetchedAt: undefined }), "bad fetchedAt": good({ fetchedAt: "yesterday" }),
+    "stale": good({ fetchedAt: "2030-06-01T09:00:00Z" }),
+  };
+  for (const [name, data] of Object.entries(cases)) assert.equal(checkOutageData(data, 90, NOW).ok, false, name);
+});
+
+test("the stale threshold is configurable and falls back to a default", () => {
+  const threeHours = good({ fetchedAt: "2030-06-01T09:00:00Z" });
+  assert.equal(checkOutageData(threeHours, 240, NOW).ok, true);
+  assert.equal(checkOutageData(threeHours, 60, NOW).ok, false);
+  assert.equal(checkOutageData(threeHours, undefined, NOW).ok, false, "default is 90 minutes");
 });
