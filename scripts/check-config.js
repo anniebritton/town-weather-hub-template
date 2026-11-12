@@ -10,7 +10,7 @@
 // Exit code: 0 nothing to fix, 1 something to fix, 2 the file is unusable.
 const fs = require("node:fs");
 const path = require("node:path");
-const { isTodo, isOff, safeUrl, feature, getPath } = require("../town-utils.js");
+const { isTodo, isOff, safeUrl, feature, getPath, safeDataFile } = require("../town-utils.js");
 
 const COASTAL_WORDS = /\b(boat|boats|boating|hurricane|tropical storm|surf|tide|tides|seas|mooring|moorings|dock|docks|coastal|shore|shoreline|storm surge|rip current|small craft|gale)\b/i;
 const PLACEHOLDER_TEXT = /example\.com|exampleton|dryfork|anystate|example county|example electric|555[-. ]?01\d\d|5550100|\b0{3}[-. ]?0{3}[-. ]?0{4}\b|\bTBD\b|\bX{3,}\b|your (town|utility)/i;
@@ -96,6 +96,14 @@ function findPlaceholders(town, { qrFile, checkBindings = true } = {}) {
     if (v !== undefined && (!applies || applies(town)) && test(v, town)) add(p, v, hint);
   }
 
+  const dataFile = town.outages && town.outages.data_file;
+  if (dataFile !== undefined && !safeDataFile(dataFile)) {
+    add("outages.data_file", dataFile, "must be a file inside data/ (for example data/outages.json); the page and the fetch script refuse anything else");
+  }
+  const maxAge = town.outages && town.outages.max_source_age_minutes;
+  if (maxAge !== undefined && !(Number.isInteger(maxAge) && maxAge > 0)) {
+    add("outages.max_source_age_minutes", maxAge, "must be a whole number of minutes (default 360)");
+  }
   for (const [k, v] of Object.entries(town.features || {})) {
     if (typeof v !== "boolean") add(`features.${k}`, v, `must be true or false (not ${JSON.stringify(v)}); ${isOff(v) ? "it is being treated as OFF" : "it is being treated as on"}`);
   }

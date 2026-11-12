@@ -161,3 +161,19 @@ test("the repo's own QR file is flagged for the template (placeholder URL) and t
   const out = spawnSync(process.execPath, [path.join(root, "scripts", "check-config.js")], { encoding: "utf8" }).stdout;
   assert.match(out, /assets\/site-qr\.svg/);
 });
+
+test("outages.data_file outside data/ and a bad max_source_age_minutes are reported", () => {
+  const t = clone(require("../../examples/southport/town.json"));
+  assert.deepEqual(findPlaceholders(t), []);
+  for (const bad of ["../app.js", "town.json", "https://evil.example/x.json", "data/../town.json", "/etc/passwd", ""]) {
+    t.outages.data_file = bad;
+    const hit = findPlaceholders(t).find((f) => f.path === "outages.data_file");
+    assert.ok(hit, `${JSON.stringify(bad)} should be flagged`);
+    assert.match(hit.hint, /inside data\//);
+  }
+  t.outages.data_file = "data/outages.json";
+  for (const bad of [0, -5, 1.5, "360"]) {
+    t.outages.max_source_age_minutes = bad;
+    assert.ok(paths(t).includes("outages.max_source_age_minutes"), String(bad));
+  }
+});

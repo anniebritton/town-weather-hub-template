@@ -100,13 +100,20 @@ async function mockNetwork(page, {
   return { requests };
 }
 
+/** "2030-06-01 07:25:00": a moment formatted the way the utility writes it (local time, no zone) */
+function utilityStamp(ms = Date.now(), timeZone = baseTown.location.timezone) {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).format(new Date(ms));
+}
+
 /** An outage file that looks freshly written by scripts/fetch_outages.py. */
 function freshOutages(over = {}) {
   const o = baseTown.outages;
   return {
     status: "ok",
     fetchedAt: new Date().toISOString(),
-    lastUpdated: "2000-01-01 12:00:00",
+    lastUpdated: utilityStamp(Date.now() - 10 * 60000),
     totals: { customers: 100000, outages: 12, incidents: 4 },
     town: { level: "town", town: o.match_town, Outages: 5 },
     county: { county: o.match_county, Outages: 9 },
@@ -118,4 +125,4 @@ function freshOutages(over = {}) {
 /** Config where live outages are switched on, for specs that exercise the outage UI. */
 const OUTAGES_ON = { outages: { provider: "avangrid" } };
 
-module.exports = { mockNetwork, town, merge, freshOutages, OUTAGES_ON };
+module.exports = { mockNetwork, town, merge, freshOutages, utilityStamp, OUTAGES_ON };

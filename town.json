@@ -61,6 +61,7 @@
     "timestamp_zone_label": "Central",
     "data_file": "data/outages.json",
     "stale_after_minutes": 90,
+    "max_source_age_minutes": 360,
     "match_verified": false
   },
 

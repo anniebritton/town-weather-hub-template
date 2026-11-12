@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { safeUrl, telHref, isTodo, num, ident, SHAPES, feature, escapeHtml, applyBindings, applyFeatures } = require("../../town-utils.js");
+const { safeUrl, telHref, isTodo, num, ident, SHAPES, feature, escapeHtml, applyBindings, applyFeatures, parseLocalTime, safeDataFile } = require("../../town-utils.js");
 
 test("safeUrl accepts only https and normalises it", () => {
   assert.equal(safeUrl("https://example.org/a b"), "https://example.org/a%20b");
@@ -100,4 +100,28 @@ test("applyFeatures removes elements for switched-off features", () => {
     .map((n) => ({ ...n, removed: false, remove() { this.removed = true; } }));
   applyFeatures({ features: { marine: false } }, { querySelectorAll: () => nodes });
   assert.deepEqual(nodes.map((n) => n.removed), [true, false, true]);
+});
+
+test("parseLocalTime reads local time in the given IANA zone, across daylight saving", () => {
+  const iso = (ms) => new Date(ms).toISOString();
+  assert.equal(iso(parseLocalTime("2030-06-01 07:25:00", "America/Chicago")), "2030-06-01T12:25:00.000Z");
+  assert.equal(iso(parseLocalTime("2030-01-15 07:25:00", "America/Chicago")), "2030-01-15T13:25:00.000Z");
+  assert.equal(iso(parseLocalTime("2030-03-10 03:30:00", "America/New_York")), "2030-03-10T07:30:00.000Z", "just after spring forward");
+  assert.equal(iso(parseLocalTime("2030-06-01T07:25", "UTC")), "2030-06-01T07:25:00.000Z");
+  assert.equal(iso(parseLocalTime("2030-06-01T07:25:00+02:00", undefined)), "2030-06-01T05:25:00.000Z");
+  assert.equal(iso(parseLocalTime("2030-06-01T07:25:00Z", undefined)), "2030-06-01T07:25:00.000Z");
+});
+
+test("parseLocalTime returns null when it cannot be sure", () => {
+  for (const [v, tz] of [["2030-06-01 07:25:00", undefined], ["2030-06-01 07:25:00", ""], ["2030-06-01 07:25:00", "Nowhere/Land"],
+    ["2030-13-01 07:25:00", "UTC"], ["2030-02-31 07:25:00", "UTC"], ["2030-06-01 25:00:00", "UTC"], ["06/01/2030 7:25 AM", "UTC"],
+    [null, "UTC"], [20300601, "UTC"], ["", "UTC"]]) assert.equal(parseLocalTime(v, tz), null, `${v} / ${tz}`);
+});
+
+test("safeDataFile accepts only a plain file path inside data/", () => {
+  for (const ok of ["data/outages.json", "data/a/b.json", "data/outages-2.json"]) assert.equal(safeDataFile(ok), ok);
+  for (const bad of ["../app.js", "data/../app.js", "data/./x.json", "data/", "data", "/data/outages.json", "/etc/passwd",
+    "https://evil.example/data/outages.json", "//evil.example/x.json", "data\\outages.json", "app.js", "town.json", "", null, undefined, 5, "data/a b.json", "data/x.json?x=1"]) {
+    assert.equal(safeDataFile(bad), null, String(bad));
+  }
 });

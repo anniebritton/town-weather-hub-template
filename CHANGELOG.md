@@ -32,6 +32,12 @@ All notable changes to this template. Format follows [Keep a Changelog](https://
 - Actions updated to current majors; Dependabot no longer watches pip (there is no manifest).
 - The template's default drought map now uses `current_conus_trd.png` (the previous `current_us_trd.png` returns 404).
 
+### Fixed (review round 3)
+- A frozen utility feed behind a fresh fetch no longer reads as "No outages": the utility's own `lastUpdated` must be younger than `outages.max_source_age_minutes` (default 360), on the page and in `fetch_outages.py` (which rejects it and keeps the last good file).
+- The utility's `lastUpdated` (local time, no zone) is now read in `location.timezone` (Intl in the page, zoneinfo in the script) instead of as UTC, so the future-date and age checks are correct. A missing or invalid zone, or an unreadable format, means unverifiable: shown as unavailable.
+- The page only reads `outages.data_file` when it is a file inside `data/`, and `check-config` flags anything else.
+- When the town has no row and the town list is empty but the utility reports outages overall, the page shows "No data (check match_town)" (and the script fails) instead of "None"/"On".
+
 ### Fixed (review round 2)
 - A hidden element (`hidden` attribute) was still shown when a class like `.btn` set `display`, leaving dead TODO/bad-URL buttons visible; `[hidden]` now always wins.
 - Outage data is rejected if `fetchedAt` or `lastUpdated` is in the future (> 5 minutes), or if a count is negative, fractional or absurd (1e308). `fetch_outages.py` applies the same checks.

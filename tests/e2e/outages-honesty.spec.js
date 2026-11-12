@@ -45,7 +45,8 @@ test("junk data ({}), wrong shapes, and stale data show Unavailable, not a green
 });
 
 test("fresh data with no outages in town or county shows the green state", async ({ page }) => {
-  await mockNetwork(page, { townPatch: OUTAGES_ON, outages: freshOutages({ town: null, county: null }) });
+  // nothing out anywhere, so a missing town row really does mean "no outages"
+  await mockNetwork(page, { townPatch: OUTAGES_ON, outages: freshOutages({ town: null, county: null, totals: { customers: 100000, outages: 0, incidents: 0 } }) });
   await page.goto("/#outages");
   await expect(page.locator("#tile-power .tile-value")).toHaveText("On");
 });

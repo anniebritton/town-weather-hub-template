@@ -15,6 +15,7 @@
 
 const {
   SHAPES, isTodo, escapeHtml, num, safeUrl, telHref, ident, getPath, feature, applyFeatures, applyBindings,
+  parseLocalTime, safeDataFile,
 } = (typeof module !== "undefined" && module.exports) ? require("./town-utils.js") : TownUtils;
 
 /* ---------- town config ---------- */
@@ -25,7 +26,8 @@ const DEFAULT_THRESHOLDS = {
   wind_watch_mph: 20, wind_caution_mph: 30, gust_watch_mph: 20, gust_caution_mph: 30,
   seas_watch_ft: 5, seas_caution_ft: 8,
 };
-const DEFAULT_STALE_MINUTES = 90; // outage data older than this is shown as unavailable
+const DEFAULT_STALE_MINUTES = 90; // our copy of the outage data (fetchedAt) older than this is shown as unavailable
+const DEFAULT_SOURCE_AGE_MINUTES = 360; // the utility's own lastUpdated older than this = a frozen feed: unavailable
 const MAX_FUTURE_MS = 5 * 60 * 1000; // a timestamp further ahead than this is clock trouble or tampering
 const MAX_COUNT = 1e9; // no utility has a billion customers; this rejects 1e308 and friends
 const REQUIRED_BLOCKS = ["site", "location", "nws"];
@@ -673,17 +675,22 @@ function fillStormTide() {
  * Anything that is not clearly real, recent data from scripts/fetch_outages.py is rejected, so the
  * page says "Unavailable" instead of a reassuring "On" it cannot back up.
  */
-function checkOutageData(data, staleMinutes = DEFAULT_STALE_MINUTES, now = Date.now()) {
+function checkOutageData(data, staleMinutes = DEFAULT_STALE_MINUTES, now = Date.now(), { timeZone, maxSourceAgeMinutes } = {}) {
   const bad = (reason) => ({ ok: false, reason });
   const count = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT; // whole, non-negative, plausible
   if (!data || typeof data !== "object" || Array.isArray(data)) return bad("not a JSON object");
   if (data.sample === true) return bad("sample data, not from a real utility");
   if (data.status !== undefined && data.status !== "ok") return bad(`status is ${JSON.stringify(data.status)}`);
   if (typeof data.lastUpdated !== "string" || !data.lastUpdated.trim()) return bad("no lastUpdated");
-  // utility timestamps are local time with no zone, so reading them as UTC can only make them look EARLIER
-  // than they are; a value that still lands in the future is wrong
-  const stamped = Date.parse(data.lastUpdated.trim().replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(data.lastUpdated) ? "" : "Z"));
-  if (!Number.isNaN(stamped) && stamped - now > MAX_FUTURE_MS) return bad("lastUpdated is in the future");
+  // The utility's own timestamp is local time with no zone: read it in the town's time zone. If that is
+  // not possible (odd format, missing or invalid location.timezone) we cannot tell how old the data is,
+  // so we must not present it as current.
+  const stamped = parseLocalTime(data.lastUpdated, timeZone);
+  if (stamped === null) return bad("can't interpret the utility's lastUpdated time (check location.timezone)");
+  if (stamped - now > MAX_FUTURE_MS) return bad("lastUpdated is in the future");
+  const sourceLimit = num(maxSourceAgeMinutes) ?? DEFAULT_SOURCE_AGE_MINUTES;
+  // a fresh heartbeat (fetchedAt) on a frozen feed must not read as "no outages"
+  if (now - stamped > sourceLimit * 60000) return bad(`the utility's own data is more than ${sourceLimit} minutes old`);
   if (!data.totals || !count(data.totals.outages)) return bad("totals.outages is not a whole number of customers");
   for (const key of ["town", "county"]) {
     if (!(key in data)) return bad(`no ${key} entry`);
@@ -714,14 +721,28 @@ async function loadOutages() {
     unavailable("this site isn't connected to the utility's data");
     return;
   }
+  // Only ever read a file inside data/ (a config typo must not point the page at some other URL)
+  const file = safeDataFile(o.data_file);
+  if (!file) {
+    console.error(`outages.data_file ${JSON.stringify(o.data_file)} must be a file inside data/`);
+    unavailable("outages.data_file in town.json must be a file inside data/");
+    return;
+  }
   try {
-    const res = await fetch(typeof o.data_file === "string" ? o.data_file : "data/outages.json", { cache: "no-cache" });
+    const res = await fetch(file, { cache: "no-cache" });
     if (!res.ok) throw new Error(`Outage data fetch failed: ${res.status}`);
     const data = await res.json();
-    const verdict = checkOutageData(data, o.stale_after_minutes);
+    const verdict = checkOutageData(data, o.stale_after_minutes, Date.now(), {
+      timeZone: TOWN.location && TOWN.location.timezone,
+      maxSourceAgeMinutes: o.max_source_age_minutes,
+    });
     if (!verdict.ok) {
       console.warn(`Outage data rejected: ${verdict.reason}`);
-      unavailable(verdict.reason.startsWith("data is more") ? "data is out of date" : "");
+      unavailable(
+        /^data is more/.test(verdict.reason) ? "data is out of date"
+          : /^the utility's own/.test(verdict.reason) ? "the utility's data has not updated recently"
+            : /location\.timezone/.test(verdict.reason) ? "can't read the utility's timestamp; check location.timezone"
+              : "");
       return;
     }
 
@@ -731,9 +752,15 @@ async function loadOutages() {
     const fmt = (n) => n.toLocaleString();
     const countyLabel = escapeHtml(typeof o.county_label === "string" ? o.county_label : "the county");
 
-    // The utility reports other towns but none matching ours, and nobody has confirmed the spelling
-    // (outages.match_verified): most likely a typo in match_town. Say so instead of claiming "None".
-    const unverifiedMatch = data.town === null && Array.isArray(data.towns) && data.towns.length > 0 && data.matchVerified !== true;
+    // No row for our town. That only means "no outages here" if we can trust the match. We can't when:
+    //  - the utility lists other towns but ours isn't one of them and nobody has confirmed the spelling
+    //    (outages.match_verified): most likely a typo in match_town; or
+    //  - the utility reports outages overall but lists no towns at all: the town list is empty, so a
+    //    missing row proves nothing.
+    // Say "No data" in those cases, never "None"/"On".
+    const listed = Array.isArray(data.towns) ? data.towns.length : 0;
+    const unverifiedMatch = data.town === null && (
+      (listed > 0 && data.matchVerified !== true) || (listed === 0 && totalOut > 0));
     if (unverifiedMatch) {
       const matchName = typeof o.match_town === "string" ? o.match_town : TOWN.site.place;
       grid.innerHTML = `<p class="status-line">No data for ${escapeHtml(matchName)} (check match_town in town.json). Use ${utility}'s outage map below.</p>`;

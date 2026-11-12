@@ -200,15 +200,18 @@ test("hazardTag always explains a tint in words", () => {
 
 /* ---------- outage data: when is it safe to show as current? ---------- */
 
+// 12:00 UTC is 07:00 in Chicago (CDT). The utility writes local time with no zone.
 const NOW = Date.parse("2030-06-01T12:00:00Z");
+const TZ = { timeZone: "America/Chicago" };
 const good = (over = {}) => ({
-  status: "ok", fetchedAt: "2030-06-01T11:30:00Z", lastUpdated: "2030-06-01 07:25:00",
+  status: "ok", fetchedAt: "2030-06-01T11:30:00Z", lastUpdated: "2030-06-01 06:50:00",
   totals: { customers: 100, outages: 3, incidents: 1 }, town: null, county: { county: "X", Outages: 3 }, towns: [], ...over,
 });
+const check = (data, stale = 90, opts = TZ) => checkOutageData(data, stale, NOW, opts);
 
 test("checkOutageData accepts fresh, well-formed data", () => {
-  assert.deepEqual(checkOutageData(good(), 90, NOW), { ok: true });
-  assert.deepEqual(checkOutageData(good({ town: { level: "town", town: "X", Outages: 4 } }), 90, NOW), { ok: true });
+  assert.deepEqual(check(good()), { ok: true });
+  assert.deepEqual(check(good({ town: { level: "town", town: "X", Outages: 4 } })), { ok: true });
 });
 
 test("checkOutageData rejects anything that could mislead", () => {
@@ -220,12 +223,55 @@ test("checkOutageData rejects anything that could mislead", () => {
     "no fetchedAt": good({ fetchedAt: undefined }), "bad fetchedAt": good({ fetchedAt: "yesterday" }),
     "stale": good({ fetchedAt: "2030-06-01T09:00:00Z" }),
   };
-  for (const [name, data] of Object.entries(cases)) assert.equal(checkOutageData(data, 90, NOW).ok, false, name);
+  for (const [name, data] of Object.entries(cases)) assert.equal(check(data).ok, false, name);
 });
 
 test("the stale threshold is configurable and falls back to a default", () => {
   const threeHours = good({ fetchedAt: "2030-06-01T09:00:00Z" });
-  assert.equal(checkOutageData(threeHours, 240, NOW).ok, true);
-  assert.equal(checkOutageData(threeHours, 60, NOW).ok, false);
-  assert.equal(checkOutageData(threeHours, undefined, NOW).ok, false, "default is 90 minutes");
+  assert.equal(check(threeHours, 240).ok, true);
+  assert.equal(check(threeHours, 60).ok, false);
+  assert.equal(check(threeHours, undefined).ok, false, "default is 90 minutes");
+});
+
+test("a frozen utility feed behind a fresh heartbeat is rejected (the utility's own lastUpdated is too old)", () => {
+  const frozen = good({ lastUpdated: "2030-05-31 20:00:00" }); // 11 hours before NOW in Chicago; fetchedAt is 30 minutes ago
+  const v = check(frozen);
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /utility's own data is more than 360 minutes old/);
+  // configurable via outages.max_source_age_minutes
+  assert.equal(check(frozen, 90, { ...TZ, maxSourceAgeMinutes: 24 * 60 }).ok, true);
+  assert.equal(check(good({ lastUpdated: "2030-06-01 04:00:00" }), 90, { ...TZ, maxSourceAgeMinutes: 60 }).ok, false);
+  assert.equal(check(good({ lastUpdated: "2030-06-01 05:00:00" })).ok, true, "2 hours old is fine under the 6 hour default");
+});
+
+test("the utility's local time is read in location.timezone, so 'in the future' is judged correctly", () => {
+  // 07:25 Chicago time = 12:25 UTC, which is 25 minutes AFTER NOW (12:00 UTC): future. Read as UTC it would look 4.5 hours old.
+  const v = check(good({ lastUpdated: "2030-06-01 07:25:00" }));
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /in the future/);
+  // the same wall-clock time is fine in a zone where it is already in the past (Eastern: 07:25 EDT = 11:25 UTC)
+  assert.equal(check(good({ lastUpdated: "2030-06-01 07:25:00" }), 90, { timeZone: "America/New_York" }).ok, true);
+  // and 07:55 in Eastern is 11:55Z: fine, while 08:30 Eastern (12:30Z) is the future
+  assert.equal(check(good({ lastUpdated: "2030-06-01 08:30:00" }), 90, { timeZone: "America/New_York" }).ok, false);
+});
+
+test("a missing or invalid time zone, or an unreadable timestamp, means unverifiable: never presented as current", () => {
+  for (const [name, opts] of Object.entries({ "no zone": {}, "empty zone": { timeZone: "" }, "bad zone": { timeZone: "Nowhere/Land" }, "not a string": { timeZone: 5 } })) {
+    const v = check(good(), 90, opts);
+    assert.equal(v.ok, false, name);
+    assert.match(v.reason, /location\.timezone/, name);
+  }
+  for (const bad of ["06/01/2030 6:50 AM", "yesterday", "2030-13-01 06:50:00", "2030-06-01 25:00:00", "2030-06-01"]) {
+    assert.equal(check(good({ lastUpdated: bad })).ok, false, bad);
+  }
+  // an explicit offset in the text needs no configured zone
+  assert.equal(check(good({ lastUpdated: "2030-06-01T11:50:00Z" }), 90, {}).ok, true);
+});
+
+test("daylight saving is handled when reading the utility's time", () => {
+  // winter: Chicago is UTC-6, so 06:00 local on 2030-01-15 is 12:00Z
+  const winterNow = Date.parse("2030-01-15T12:00:00Z");
+  const winter = (stamp) => checkOutageData({ ...good({ fetchedAt: "2030-01-15T11:55:00Z", lastUpdated: stamp }) }, 90, winterNow, TZ);
+  assert.equal(winter("2030-01-15 05:50:00").ok, true);   // 11:50Z, ten minutes ago
+  assert.equal(winter("2030-01-15 06:30:00").ok, false);  // 12:30Z, in the future
 });

@@ -55,23 +55,29 @@ test("the bundled sample is marked as a sample, so the page never shows it as re
 
 test("what scripts/fetch_outages.py writes is accepted by the page (writer/reader contract)", () => {
   const code = `
-import json, sys
+import datetime, json, sys
+from zoneinfo import ZoneInfo
 sys.path.insert(0, "scripts")
 import fetch_outages as f
-county = {"lastUpdated": "2020-06-01 07:25:00", "customers": 10, "outages": 3, "incidents": 1,
+tz = "America/Chicago"
+stamp = (datetime.datetime.now(ZoneInfo(tz)) - datetime.timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+county = {"lastUpdated": stamp, "customers": 10, "outages": 3, "incidents": 1,
           "features": [{"properties": {"county": "EXAMPLE", "Outages": 3}}]}
 town = {"features": [{"properties": {"level": "town", "town": "EXAMPLETON", "Outages": 3}}]}
-f.validate_response(county, town)
+f.validate_response(county, town, tz)
 print(json.dumps(f.build_result(county, town, {"match_town": "EXAMPLETON", "match_county": "EXAMPLE"})))`;
   let out;
   try {
     out = execFileSync("python3", ["-c", code], { cwd: path.join(__dirname, "..", ".."), encoding: "utf8" });
   } catch (e) {
-    if (e.code === "ENOENT") return; // no python on this machine; the python suite covers the writer
+    if (e.code === "ENOENT" || /No module named 'zoneinfo'|ZoneInfoNotFoundError/.test(String(e.stderr))) return; // no python/tz data here; the python suite covers the writer
     throw e;
   }
   const written = JSON.parse(out);
-  const verdict = checkOutageData(written, 90, Date.parse(written.fetchedAt) + 60_000);
+  // The page reads the utility's local time in the same zone the script used
+  const verdict = checkOutageData(written, 90, Date.parse(written.fetchedAt) + 60_000, { timeZone: "America/Chicago" });
   assert.deepEqual(verdict, { ok: true });
   assert.equal(written.town.Outages, 3);
+  // ...and refuses it when the zone is wrong or unknown, rather than guessing
+  assert.equal(checkOutageData(written, 90, Date.parse(written.fetchedAt) + 60_000, {}).ok, false);
 });

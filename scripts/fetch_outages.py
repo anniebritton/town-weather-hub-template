@@ -14,6 +14,11 @@ script does nothing and exits 0, so the workflow is safe to leave enabled.
 Safety rules (the page relies on these):
   * A response that does not have the expected shape is rejected: the script
     exits 1 and leaves the last good data file untouched.
+  * The utility's own "lastUpdated" is local time with no zone. It is read in the
+    town's time zone (location.timezone). If that is not possible, or the time
+    is in the future, or older than outages.max_source_age_minutes (default 360),
+    the response is rejected: a frozen feed behind a fresh fetch must not look
+    like "no outages".
   * The file records when WE fetched it ("fetchedAt"); the page treats old data
     as unavailable instead of showing stale numbers as current.
   * The file is rewritten only when the numbers change, or when the previous
@@ -36,11 +41,13 @@ For another utility, adapt fetch_json(), validate_response() and build_result().
 import datetime
 import json
 import os
+import re
 import sys
 import urllib.request
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 HEARTBEAT_MINUTES = 45
+DEFAULT_SOURCE_AGE_MINUTES = 360  # the utility's own lastUpdated older than this = a frozen feed
 MAX_COUNT = 10 ** 9        # no utility has a billion customers; rejects absurd or hostile values
 MAX_FUTURE = datetime.timedelta(minutes=5)
 
@@ -79,12 +86,37 @@ def _is_count(v):
     return isinstance(v, int) and 0 <= v <= MAX_COUNT
 
 
-def _parse_utility_time(value):
-    """Utility timestamps look like '2030-06-01 07:25:00' (local time, no zone). None if unparseable."""
-    try:
-        return datetime.datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
-    except (AttributeError, ValueError):
+_TIME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:?\d{2})?$", re.I)
+
+
+def _parse_utility_time(value, tz_name=None):
+    """Utility timestamps look like '2030-06-01 07:25:00': local time with no zone. Read them in the
+    town's IANA time zone and return an aware UTC datetime. None means "cannot be read reliably"
+    (odd format, impossible date, missing or unknown time zone): the caller must not trust the data."""
+    if not isinstance(value, str):
         return None
+    m = _TIME_RE.match(value.strip())
+    if not m:
+        return None
+    y, mo, d, h, mi, s, zone = m.groups()
+    try:
+        naive = datetime.datetime(int(y), int(mo), int(d), int(h), int(mi), int(s or 0))
+    except ValueError:
+        return None
+    if zone:
+        if zone.upper() == "Z":
+            return naive.replace(tzinfo=datetime.timezone.utc)
+        digits = zone[1:].replace(":", "")
+        offset = datetime.timedelta(hours=int(digits[:2]), minutes=int(digits[2:4]))
+        return (naive - (offset if zone[0] == "+" else -offset)).replace(tzinfo=datetime.timezone.utc)
+    if not isinstance(tz_name, str) or not tz_name.strip():
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        local = naive.replace(tzinfo=ZoneInfo(tz_name))
+    except Exception:  # unknown zone name, or no tz database on this machine
+        return None
+    return local.astimezone(datetime.timezone.utc)
 
 
 class ConfigError(ValueError):
@@ -103,8 +135,10 @@ def resolve_data_file(cfg):
     return path
 
 
-def validate_response(county, town):
-    """Raise ResponseError unless both responses look like real outage data."""
+def validate_response(county, town, timezone=None, max_source_age_minutes=DEFAULT_SOURCE_AGE_MINUTES, now=None):
+    """Raise ResponseError unless both responses look like real, current outage data.
+    `timezone` is location.timezone from town.json (needed to read the utility's local timestamp)."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
     for name, data in (("county", county), ("town", town)):
         if not isinstance(data, dict):
             raise ResponseError(f"{name} response is not a JSON object")
@@ -116,9 +150,18 @@ def validate_response(county, town):
                 raise ResponseError(f"{name} response has a feature without 'properties'")
     if not isinstance(county.get("lastUpdated"), str) or not county["lastUpdated"].strip():
         raise ResponseError("county response is missing 'lastUpdated'")
-    stamped = _parse_utility_time(county["lastUpdated"])
-    if stamped is not None and stamped - datetime.datetime.now(datetime.timezone.utc) > MAX_FUTURE:
+    stamped = _parse_utility_time(county["lastUpdated"], timezone)
+    if stamped is None:
+        raise ResponseError(
+            f"cannot interpret the utility's lastUpdated {county['lastUpdated']!r} "
+            "(unrecognised format, or location.timezone in town.json is missing or invalid)")
+    if stamped - now > MAX_FUTURE:
         raise ResponseError("county response has a 'lastUpdated' in the future")
+    limit = max_source_age_minutes if isinstance(max_source_age_minutes, (int, float)) and not isinstance(max_source_age_minutes, bool) and max_source_age_minutes > 0 else DEFAULT_SOURCE_AGE_MINUTES
+    if now - stamped > datetime.timedelta(minutes=limit):
+        raise ResponseError(
+            f"the utility's own data is more than {int(limit)} minutes old (lastUpdated {county['lastUpdated']!r}); "
+            "its feed looks frozen")
     for key in ("customers", "outages", "incidents"):
         if not _is_count(county.get(key)):
             raise ResponseError(f"county response needs a whole, non-negative number for '{key}'")
@@ -187,10 +230,17 @@ def should_write(old, new, now=None):
 def match_problem(result, outages_cfg):
     """An error message when the utility reports other towns but none is ours, and the spelling
     has not been confirmed (outages.match_verified). None when there is nothing to complain about."""
-    if result["town"] is not None or outages_cfg.get("match_verified"):
+    if result["town"] is not None:
         return None
     names = {t.get("town", "").upper() for t in result["towns"]}
     if not names:
+        # The utility reports outages but lists no towns at all: a missing row proves nothing
+        if (result["totals"].get("outages") or 0) > 0:
+            return (
+                f"the utility reports {result['totals']['outages']} customers out but lists no towns, so "
+                f"there is no way to confirm match_town={outages_cfg['match_town']!r}. Not writing the data file.")
+        return None
+    if outages_cfg.get("match_verified"):
         return None
     return (
         f"no town row matched match_town={outages_cfg['match_town']!r}, but the utility is reporting "
@@ -209,7 +259,9 @@ def unmatched_warnings(result, outages_cfg):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    cfg = load_config()["outages"]
+    full = load_config()
+    cfg = full["outages"]
+    timezone = (full.get("location") or {}).get("timezone")
 
     if "--enabled" in argv:
         print("true" if is_enabled(cfg) else "false")
@@ -227,7 +279,7 @@ def main(argv=None):
     town = fetch_json(cfg["api_url"], cfg["api_key_header"], key, "town")
 
     if "--towns" in argv:
-        validate_response(county, town)
+        validate_response(county, town, timezone, float("inf"))  # listing names works even if the feed is stale
         for t in sorted({t["properties"].get("town", "") for t in town["features"]}):
             print("town  ", t)
         for c in sorted({c["properties"].get("county", "") for c in county["features"]}):
@@ -238,7 +290,7 @@ def main(argv=None):
         return 0
 
     try:
-        validate_response(county, town)
+        validate_response(county, town, timezone, cfg.get("max_source_age_minutes", DEFAULT_SOURCE_AGE_MINUTES))
     except ResponseError as e:
         print(f"::error::Outage API returned unexpected data ({e}). Keeping the last good file.", file=sys.stderr)
         return 1

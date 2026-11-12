@@ -56,6 +56,7 @@
     "timestamp_zone_label": "Eastern",
     "data_file": "data/outages.json",
     "stale_after_minutes": 90,
+    "max_source_age_minutes": 360,
     "match_verified": true
   },
   "alerts": {

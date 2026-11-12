@@ -1,18 +1,28 @@
 """Offline tests for scripts/fetch_outages.py (no network, no API key)."""
+import datetime
 import io
 import os
 import sys
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts"))
 import fetch_outages  # noqa: E402
 
 CFG = {"match_town": "Exampleton", "match_county": "Example"}
+TZ = "America/Chicago"  # location.timezone: the utility's lastUpdated is local time in this zone
+
+
+def stamp(minutes_ago=10, tz=TZ):
+    """A utility-style timestamp ('2030-06-01 07:25:00': local time, no zone) for `minutes_ago` minutes ago."""
+    t = datetime.datetime.now(ZoneInfo(tz)) - datetime.timedelta(minutes=minutes_ago)
+    return t.strftime("%Y-%m-%d %H:%M:%S")
+
 
 COUNTY = {
-    "lastUpdated": "2000-01-01 12:00:00", "customers": 1000, "outages": 7, "incidents": 3,
+    "lastUpdated": stamp(10), "customers": 1000, "outages": 7, "incidents": 3,
     "features": [
         {"properties": {"county": "OTHER", "Outages": 4}},
         {"properties": {"county": "EXAMPLE", "Outages": 3}},
@@ -45,7 +55,7 @@ class BuildResultTests(unittest.TestCase):
 
 class ValidateTests(unittest.TestCase):
     def test_good_response_passes(self):
-        fetch_outages.validate_response(COUNTY, TOWN)
+        fetch_outages.validate_response(COUNTY, TOWN, TZ)
 
     def test_junk_is_rejected(self):
         for county, town in [
@@ -67,7 +77,7 @@ class HostileValueTests(unittest.TestCase):
 
     def reject(self, county=None, town=None):
         with self.assertRaises(fetch_outages.ResponseError):
-            fetch_outages.validate_response(county or COUNTY, town or TOWN)
+            fetch_outages.validate_response(county or COUNTY, town or TOWN, TZ)
 
     def test_bad_totals_are_rejected(self):
         for bad in (-1, 1.5, 1e308, 10 ** 12, True, "7", None, [7]):
@@ -75,7 +85,7 @@ class HostileValueTests(unittest.TestCase):
             self.reject(county={**COUNTY, "customers": bad})
 
     def test_whole_number_floats_are_accepted(self):
-        fetch_outages.validate_response({**COUNTY, "outages": 7.0}, TOWN)
+        fetch_outages.validate_response({**COUNTY, "outages": 7.0}, TOWN, TZ)
 
     def test_bad_per_row_counts_are_rejected(self):
         for bad in (-4, 0.5, 1e308, "5"):
@@ -84,8 +94,8 @@ class HostileValueTests(unittest.TestCase):
 
     def test_future_timestamps_are_rejected(self):
         self.reject(county={**COUNTY, "lastUpdated": "2999-01-01 00:00:00"})
-        fetch_outages.validate_response({**COUNTY, "lastUpdated": "2000-01-01 00:00:00"}, TOWN)
-        fetch_outages.validate_response({**COUNTY, "lastUpdated": "not a date"}, TOWN)  # unparseable is tolerated, not trusted
+        self.reject(county={**COUNTY, "lastUpdated": stamp(-120)})  # two hours ahead
+        fetch_outages.validate_response({**COUNTY, "lastUpdated": stamp(-2)}, TOWN, TZ)  # a couple of minutes of clock skew is fine
 
     def test_data_file_must_be_inside_data_dir(self):
         good = fetch_outages.resolve_data_file({"data_file": "data/outages.json"})
@@ -110,7 +120,70 @@ class MatchTests(unittest.TestCase):
     def test_matched_town_or_empty_list_is_fine(self):
         self.assertIsNone(fetch_outages.match_problem(self.result(CFG), CFG))
         cfg = {"match_town": "ANYWHERE", "match_county": "EXAMPLE"}
-        self.assertIsNone(fetch_outages.match_problem(self.result(cfg, {"features": []}), cfg))
+        quiet = fetch_outages.build_result({**COUNTY, "outages": 0}, {"features": []}, cfg)
+        self.assertIsNone(fetch_outages.match_problem(quiet, cfg), "nothing out anywhere, nothing to confirm")
+
+    def test_no_town_rows_but_outages_overall_cannot_confirm_the_match(self):
+        for verified in (False, True):
+            cfg = {"match_town": "ANYWHERE", "match_county": "EXAMPLE", "match_verified": verified}
+            r = fetch_outages.build_result(COUNTY, {"features": []}, cfg)   # COUNTY reports 7 customers out
+            msg = fetch_outages.match_problem(r, cfg)
+            self.assertIn("lists no towns", msg, f"verified={verified}")
+
+
+class TimeTests(unittest.TestCase):
+    NOW = datetime.datetime(2030, 6, 1, 12, 0, tzinfo=datetime.timezone.utc)   # 07:00 in Chicago (CDT)
+
+    def parse(self, value, tz=TZ):
+        return fetch_outages._parse_utility_time(value, tz)
+
+    def test_local_time_is_read_in_the_towns_zone_across_dst(self):
+        self.assertEqual(self.parse("2030-06-01 07:25:00"), datetime.datetime(2030, 6, 1, 12, 25, tzinfo=datetime.timezone.utc))
+        self.assertEqual(self.parse("2030-01-15 07:25:00"), datetime.datetime(2030, 1, 15, 13, 25, tzinfo=datetime.timezone.utc))
+        self.assertEqual(self.parse("2030-03-10 03:30:00", "America/New_York"), datetime.datetime(2030, 3, 10, 7, 30, tzinfo=datetime.timezone.utc))
+        self.assertEqual(self.parse("2030-06-01T07:25:00+02:00", None), datetime.datetime(2030, 6, 1, 5, 25, tzinfo=datetime.timezone.utc))
+
+    def test_unreadable_means_none_never_a_guess(self):
+        for value, tz in [("2030-06-01 07:25:00", None), ("2030-06-01 07:25:00", ""), ("2030-06-01 07:25:00", "Nowhere/Land"),
+                          ("2030-13-01 07:25:00", TZ), ("2030-02-31 07:25:00", TZ), ("06/01/2030 7:25 AM", TZ), (None, TZ), (5, TZ)]:
+            self.assertIsNone(self.parse(value, tz), f"{value!r} / {tz!r}")
+
+    def check(self, last_updated, tz=TZ, limit=360):
+        fetch_outages.validate_response({**COUNTY, "lastUpdated": last_updated}, TOWN, tz, limit, now=self.NOW)
+
+    def test_frozen_feed_is_rejected_even_though_we_just_fetched_it(self):
+        self.check("2030-06-01 06:50:00")                                    # 10 minutes old: fine
+        self.check("2030-06-01 02:00:00")                                    # 5 hours old: under the 6 hour default
+        with self.assertRaises(fetch_outages.ResponseError) as cm:
+            self.check("2030-05-31 20:00:00")                                # 11 hours old
+        self.assertIn("frozen", str(cm.exception))
+        self.check("2030-05-31 20:00:00", limit=24 * 60)                     # configurable
+        with self.assertRaises(fetch_outages.ResponseError):
+            self.check("2030-06-01 04:00:00", limit=60)
+
+    def test_future_is_judged_in_the_towns_zone(self):
+        with self.assertRaises(fetch_outages.ResponseError) as cm:
+            self.check("2030-06-01 07:25:00")                                # 12:25Z, 25 minutes ahead
+        self.assertIn("future", str(cm.exception))
+        self.check("2030-06-01 07:25:00", tz="America/New_York")             # 11:25Z: in the past there
+
+    def test_missing_or_invalid_zone_is_unverifiable_and_rejected(self):
+        for tz in (None, "", "Nowhere/Land"):
+            with self.assertRaises(fetch_outages.ResponseError) as cm:
+                self.check("2030-06-01 06:50:00", tz=tz)
+            self.assertIn("timezone", str(cm.exception))
+
+    def test_main_rejects_a_frozen_feed_and_keeps_the_last_good_file(self):
+        cfg = {"provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h", "match_town": "EXAMPLETON",
+               "match_county": "EXAMPLE", "data_file": "data/test-out.json", "max_source_age_minutes": 60}
+        frozen = {**COUNTY, "lastUpdated": stamp(600)}
+        with mock.patch.object(fetch_outages, "load_config", return_value={"location": {"timezone": TZ}, "outages": cfg}), \
+             mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
+             mock.patch.object(fetch_outages, "fetch_json", side_effect=lambda u, h, k, f: frozen if f == "county" else TOWN), \
+             mock.patch("builtins.open", side_effect=AssertionError("must not touch files")), \
+             redirect_stdout(io.StringIO()), mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(fetch_outages.main([]), 1)
+        self.assertIn("frozen", err.getvalue())
 
 
 class WriteDecisionTests(unittest.TestCase):
@@ -185,7 +258,7 @@ class MainTests(unittest.TestCase):
         base = {"provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",
                 "match_town": "EXAMPLETON", "match_county": "EXAMPLE", "data_file": "data/test-out.json"}
         responses = {"county": county, "town": town}
-        with mock.patch.object(fetch_outages, "load_config", return_value={"outages": {**base, **cfg}}), \
+        with mock.patch.object(fetch_outages, "load_config", return_value={"location": {"timezone": TZ}, "outages": {**base, **cfg}}), \
              mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
              mock.patch.object(fetch_outages, "fetch_json", side_effect=lambda u, h, k, f: responses[f]), \
              mock.patch.object(fetch_outages, "resolve_data_file", return_value="/nonexistent-dir/never-written.json"), \
@@ -200,7 +273,7 @@ class MainTests(unittest.TestCase):
         self.assertIn("match_verified", err)
 
     def test_bad_data_file_path_fails_loudly(self):
-        with mock.patch.object(fetch_outages, "load_config", return_value={"outages": {
+        with mock.patch.object(fetch_outages, "load_config", return_value={"location": {"timezone": TZ}, "outages": {
                 "provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",
                 "match_town": "EXAMPLETON", "match_county": "EXAMPLE", "data_file": "../app.js"}}), \
              mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
@@ -212,7 +285,7 @@ class MainTests(unittest.TestCase):
     def test_junk_response_keeps_last_good_file_and_fails(self):
         cfg = {"provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",
                "match_town": "EXAMPLETON", "match_county": "EXAMPLE", "data_file": "data/test-out.json"}
-        with mock.patch.object(fetch_outages, "load_config", return_value={"outages": cfg}), \
+        with mock.patch.object(fetch_outages, "load_config", return_value={"location": {"timezone": TZ}, "outages": cfg}), \
              mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
              mock.patch.object(fetch_outages, "fetch_json", return_value={}), \
              mock.patch("builtins.open", side_effect=AssertionError("must not touch files")), \

@@ -62,6 +62,51 @@ const TownUtils = (() => {
     return typeof v === "string" && shape.test(v) ? v : null;
   }
 
+  /*
+   * Utility timestamps look like "2030-06-01 07:25:00": local time with NO zone. Interpret them in the
+   * town's IANA time zone (location.timezone) and return epoch milliseconds, or null when that can't be
+   * done reliably (unrecognised format, missing or invalid zone). null means "unverifiable": the caller
+   * must not present the data as current. An explicit Z or +hh:mm offset in the text is honoured.
+   */
+  function parseLocalTime(value, timeZone) {
+    if (typeof value !== "string") return null;
+    const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:?\d{2})?$/i);
+    if (!m) return null;
+    const [, y, mo, d, h, mi, s = "0", zone] = m;
+    const naive = Date.UTC(+y, +mo - 1, +d, +h, +mi, +s);
+    const check = new Date(naive);
+    // Date.UTC silently rolls over impossible dates (month 13, 25:00); reject them
+    if (Number.isNaN(naive) || check.getUTCMonth() !== +mo - 1 || check.getUTCDate() !== +d || check.getUTCHours() !== +h) return null;
+    if (zone) {
+      if (/z/i.test(zone)) return naive;
+      const digits = zone.slice(1).replace(":", "");
+      const minutes = (zone[0] === "-" ? -1 : 1) * (+digits.slice(0, 2) * 60 + +digits.slice(2, 4));
+      return naive - minutes * 60000;
+    }
+    if (typeof timeZone !== "string" || !timeZone.trim()) return null;
+    try {
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+      const offsetAt = (utc) => {
+        const p = Object.fromEntries(fmt.formatToParts(new Date(utc)).map((x) => [x.type, x.value]));
+        return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - utc;
+      };
+      // two passes settle the offset around daylight-saving changes
+      const guess = naive - offsetAt(naive);
+      return naive - offsetAt(guess);
+    } catch {
+      return null; // not a valid IANA zone name
+    }
+  }
+
+  /* The path if it is a plain file inside data/ (data/outages.json), else null. */
+  function safeDataFile(v) {
+    if (typeof v !== "string" || !/^data\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(v)) return null;
+    return v.split("/").some((seg) => seg === "." || seg === "..") ? null : v;
+  }
+
   function getPath(obj, path) {
     return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj);
   }
@@ -112,7 +157,7 @@ const TownUtils = (() => {
     });
   }
 
-  const api = { SHAPES, isTodo, isOff, escapeHtml, num, safeUrl, telHref, ident, getPath, feature, applyFeatures, applyBindings };
+  const api = { SHAPES, isTodo, isOff, parseLocalTime, safeDataFile, escapeHtml, num, safeUrl, telHref, ident, getPath, feature, applyFeatures, applyBindings };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   return api;
 })();

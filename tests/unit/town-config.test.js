@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { feature, isTodo, safeUrl } = require("../../town-utils.js");
+const { feature, isTodo, safeUrl, safeDataFile } = require("../../town-utils.js");
 
 const root = path.join(__dirname, "..", "..");
 const configs = [["town.json", path.join(root, "town.json")]];
@@ -78,6 +78,8 @@ for (const [label, file] of configs) {
     assert.equal(isTodo(o.phone_dial), isTodo(o.phone_display), "phone_display and phone_dial should both be TODO or both be real");
     assert.ok(Number.isInteger(o.stale_after_minutes) && o.stale_after_minutes > 0, "stale_after_minutes");
     assert.equal(typeof o.match_verified, "boolean", "outages.match_verified must be true or false");
+    assert.ok(Number.isInteger(o.max_source_age_minutes) && o.max_source_age_minutes > 0, "max_source_age_minutes");
+    assert.ok(safeDataFile(o.data_file), `outages.data_file must be a file inside data/, got ${o.data_file}`);
     assert.match(o.api_key_env, /^[A-Z][A-Z0-9_]*$/, "api_key_env is the NAME of an env var, not a key");
     assert.equal("api_key" in o, false, "never put a key in town.json");
     if (o.provider !== "none") for (const k of ["api_url", "api_key_header", "match_town", "match_county"]) str(o[k], `outages.${k}`);
