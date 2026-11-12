@@ -4,6 +4,9 @@ All notable changes to this template. Format follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Changed
+- README cut from ~190 to ~50 lines; the detail moved to `docs/adapting.md`, `docs/outages.md`, `docs/config-reference.md` and `docs/development.md`.
+
 ### Added
 - `AGENTS.md`: instructions for AI coding agents to set the template up for a town or to contribute to it.
 - `examples/southport/`: a complete, real `town.json` for Southport Island, Maine, as a worked example.

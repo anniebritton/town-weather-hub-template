@@ -76,7 +76,7 @@ function findQrProblem(town, qrFile) {
   const svg = fs.readFileSync(qrFile, "utf8");
   const encoded = (svg.match(/<title>([^<]*)<\/title>/) || [])[1];
   const want = town.site && town.site.public_url;
-  const regen = "regenerate it with the command in the README (step 6)";
+  const regen = "regenerate it with the command in docs/adapting.md (step 6)";
   if (!encoded) return { path: "assets/site-qr.svg", value: "", hint: `does not record its URL, so it cannot be checked: ${regen}` };
   if (/example\.com/i.test(encoded)) return { path: "assets/site-qr.svg", value: encoded, hint: `encodes a placeholder URL: ${regen}` };
   if (want && encoded !== want) return { path: "assets/site-qr.svg", value: encoded, hint: `encodes a different URL than site.public_url (${want}): ${regen}` };
