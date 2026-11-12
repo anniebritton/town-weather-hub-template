@@ -1,5 +1,12 @@
 {
-  "_comment": "Everything town-specific lives in this file. The values below are for a FICTIONAL town (Exampleton) and are placeholders: replace every one. See README.md for the full reference.",
+  "_comment": "Everything town-specific lives in this file. The values below are for a FICTIONAL town (Exampleton) and are placeholders: replace every one. A value you cannot verify should be the text TODO: the page shows it as a visible TODO and never as a dialable number. Optional sections are switched on and off in \"features\". See README.md for the full reference.",
+
+  "features": {
+    "marine": true,
+    "tides": true,
+    "climate_coastal": true,
+    "pests": true
+  },
 
   "site": {
     "name": "Exampleton Weather Hub",
@@ -41,8 +48,8 @@
     "provider": "none",
     "utility_name": "Example Electric",
     "utility_short": "Example Electric",
-    "phone_display": "1-800-555-0100",
-    "phone_dial": "18005550100",
+    "phone_display": "TODO",
+    "phone_dial": "TODO",
     "report_url": "https://example.com/report-outage",
     "map_url": "https://example.com/outage-map",
     "api_url": "https://example.com/api/outagedata",
@@ -52,7 +59,10 @@
     "match_county": "EXAMPLE",
     "county_label": "Example County",
     "timestamp_zone_label": "Central",
-    "data_file": "data/outages.json"
+    "data_file": "data/outages.json",
+    "stale_after_minutes": 90,
+    "max_source_age_minutes": 360,
+    "match_verified": false
   },
 
   "alerts": {
@@ -73,15 +83,16 @@
   "fire": {
     "agency": "Anystate Forest Service",
     "map_url": "https://example.com/fire-danger-map",
+    "embed": true,
     "map_title": "Anystate Forest Service daily wildfire danger map",
     "season": "spring through fall",
     "burn_note": "At Very High or Extreme, burn permits are often suspended"
   },
 
   "drought": {
-    "image_url": "https://droughtmonitor.unl.edu/data/png/current/current_us_trd.png",
+    "image_url": "https://droughtmonitor.unl.edu/data/png/current/current_conus_trd.png",
     "image_alt": "Current U.S. Drought Monitor map, showing drought conditions by region",
-    "region_name": "the U.S.",
+    "region_name": "the continental U.S.",
     "well_note": "Many homes here are on private wells, and dry summers are becoming more common."
   },
 
@@ -106,7 +117,7 @@
     "description": "Printable one-page emergency reference card for Exampleton residents.",
     "phones": [
       { "label": "Life-threatening emergency, fire, or downed power line touching anything", "number": "911", "urgent": true },
-      { "label": "Report a power outage: Example Electric (24 hours)", "number": "1-800-555-0100" },
+      { "label": "Report a power outage: Example Electric (24 hours)", "number": "TODO" },
       { "label": "Weather updates when internet is out: NOAA Weather Radio", "number": "162.400–162.550 MHz" }
     ],
     "write_ins": [
@@ -119,6 +130,12 @@
   },
 
   "local_meaning": [
+    { "pattern": "red flag|fire weather|extreme fire",
+      "text": "Fire can start and spread quickly in dry, windy weather. Don't burn outdoors, and avoid anything that throws sparks. Know your way out and keep your phone charged." },
+    { "pattern": "dust storm|blowing dust|dust advisory",
+      "text": "Visibility on the road can drop to nearly zero without warning. If caught driving, pull off the road, turn off your lights, take your foot off the brake, and wait it out. Stay indoors if you can." },
+    { "pattern": "excessive heat|extreme heat|heat advisory",
+      "text": "Dangerous heat. Check on older neighbors and anyone without air conditioning, drink water steadily, and take breaks indoors. Never leave people or pets in a parked car." },
     { "pattern": "gale|^storm warning|hurricane force wind",
       "text": "Dangerous winds on the water. Boats should be back on their moorings or hauled; check your lines and fenders now. Expect scattered power outages from limbs on lines; charge your phone while you can." },
     { "pattern": "hurricane|tropical storm",

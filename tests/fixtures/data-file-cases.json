@@ -1,0 +1,172 @@
+[
+ {
+  "path": "data/outages.json",
+  "ok": true,
+  "note": ""
+ },
+ {
+  "path": "data/a/b.json",
+  "ok": true,
+  "note": ""
+ },
+ {
+  "path": "data/outages-2.json",
+  "ok": true,
+  "note": ""
+ },
+ {
+  "path": "data/a_b.c-d.json",
+  "ok": true,
+  "note": ""
+ },
+ {
+  "path": "data/.hidden.json",
+  "ok": true,
+  "note": ""
+ },
+ {
+  "path": "data/v1.2/out.json",
+  "ok": true,
+  "note": ""
+ },
+ {
+  "path": "../app.js",
+  "ok": false,
+  "note": "parent dir"
+ },
+ {
+  "path": "data/../app.js",
+  "ok": false,
+  "note": "dot-dot inside"
+ },
+ {
+  "path": "data/./x.json",
+  "ok": false,
+  "note": "dot segment"
+ },
+ {
+  "path": "data/",
+  "ok": false,
+  "note": "directory"
+ },
+ {
+  "path": "data",
+  "ok": false,
+  "note": "no file"
+ },
+ {
+  "path": "/data/outages.json",
+  "ok": false,
+  "note": "absolute"
+ },
+ {
+  "path": "/etc/passwd",
+  "ok": false,
+  "note": "absolute"
+ },
+ {
+  "path": "https://evil.example/data/outages.json",
+  "ok": false,
+  "note": "URL"
+ },
+ {
+  "path": "//evil.example/x.json",
+  "ok": false,
+  "note": "protocol-relative"
+ },
+ {
+  "path": "data\\outages.json",
+  "ok": false,
+  "note": "backslash"
+ },
+ {
+  "path": "app.js",
+  "ok": false,
+  "note": "outside data/"
+ },
+ {
+  "path": "town.json",
+  "ok": false,
+  "note": "outside data/"
+ },
+ {
+  "path": "",
+  "ok": false,
+  "note": "empty"
+ },
+ {
+  "path": "data/a b.json",
+  "ok": false,
+  "note": "space"
+ },
+ {
+  "path": "data/x.json?x=1",
+  "ok": false,
+  "note": "query string"
+ },
+ {
+  "path": "data/x#y",
+  "ok": false,
+  "note": "fragment"
+ },
+ {
+  "path": "data//x.json",
+  "ok": false,
+  "note": "empty segment"
+ },
+ {
+  "path": "data/é.json",
+  "ok": false,
+  "note": "non-ASCII"
+ },
+ {
+  "path": "data/x.json/",
+  "ok": false,
+  "note": "trailing slash"
+ },
+ {
+  "path": "data/ x.json",
+  "ok": false,
+  "note": "leading space in name"
+ },
+ {
+  "path": "DATA/outages.json",
+  "ok": false,
+  "note": "case matters"
+ },
+ {
+  "path": "data/..",
+  "ok": false,
+  "note": "dot-dot as the file"
+ },
+ {
+  "path": "data/a/../b.json",
+  "ok": false,
+  "note": "dot-dot in the middle"
+ },
+ {
+  "path": "data/%2e%2e/x.json",
+  "ok": false,
+  "note": "percent escapes"
+ },
+ {
+  "path": "data/x\u0000.json",
+  "ok": false,
+  "note": "NUL character"
+ },
+ {
+  "path": " data/outages.json",
+  "ok": false,
+  "note": "leading space"
+ },
+ {
+  "path": "data/outages.json ",
+  "ok": false,
+  "note": "trailing space"
+ },
+ {
+  "path": "data/outages.json\n",
+  "ok": false,
+  "note": "trailing newline"
+ }
+]

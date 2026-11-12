@@ -94,7 +94,7 @@ function tickWhy(score, maxTemp) {
 
 if (typeof document !== "undefined") {
   // townReady comes from app.js (loaded first); the forecast URL depends on town.json
-  townReady.then(loadPestMeters).catch((err) => console.error(err));
+  townReady.then((ok) => { if (ok && document.getElementById("meter-mosquito")) return loadPestMeters(); }).catch((err) => console.error(err));
 }
 
 async function loadPestMeters() {
@@ -108,8 +108,8 @@ async function loadPestMeters() {
         date: start.toDateString(),
         weekday: start.toLocaleDateString(undefined, { weekday: "short" }),
         hour: start.getHours(),
-        temp: p.temperature,
-        rh: p.relativeHumidity?.value ?? 60,
+        temp: typeof p.temperature === "number" ? p.temperature : NaN,
+        rh: typeof p.relativeHumidity?.value === "number" ? p.relativeHumidity.value : 60,
         wind: parseWindMph(p.windSpeed),
         day: p.isDaytime,
       };
@@ -154,8 +154,8 @@ function renderPestDays(id, days, key) {
     const level = pestLevel(d[key]);
     return `
       <div class="meter-day" data-level="${level.label.toLowerCase().replace(" ", "-")}">
-        <span class="meter-day-name">${d.label}</span>
-        <span class="meter-day-level">${level.label}</span>
+        <span class="meter-day-name">${escapeHtml(d.label)}</span>
+        <span class="meter-day-level">${escapeHtml(level.label)}</span>
       </div>`;
   }).join("");
 }

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Emergency Fridge Card</title>
 <meta name="description" content="Printable one-page emergency reference card for local residents.">
+<!-- Fonts come from Google Fonts (visitors' IP addresses reach Google). Delete these three <link> lines to use system fonts instead. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -77,6 +78,7 @@
   }
   .phone-row strong { font-size: 1.15rem; white-space: nowrap; }
   .phone-row.urgent strong { color: var(--red); font-size: 1.3rem; }
+  .phone-row strong.todo { color: var(--red); font-size: 1rem; border: 2px dashed var(--red); padding: 0 0.4rem; }
   .write-in {
     border-bottom: 1px solid var(--ink-soft);
     flex: 1;
@@ -147,7 +149,7 @@
     <li>7-day supply of medications</li>
     <li>Fuel the car; cash on hand</li>
     <li>Generator: check fuel, test run it</li>
-    <li>Secure or haul boats; double lines</li>
+    <li data-feature="marine">Secure or haul boats; double lines</li>
     <li>Bring in outdoor furniture</li>
     <li>Check on a neighbor — agree on a signal</li>
   </ul>
@@ -163,22 +165,25 @@
   <div class="site-row">
     <img id="card-qr" src="assets/site-qr.svg" alt="QR code linking to the weather hub website">
     <p>
-      Live alerts, outage numbers, tides, and forecasts:<br>
+      Live alerts, outage numbers, <span data-feature="tides">tides, </span>and forecasts:<br>
       <span class="url">Weather Hub</span><br>
       Scan the code with your phone camera, or ask any family member to bookmark it for you.
     </p>
   </div>
 </div>
+<script src="town-utils.js"></script>
 <script>
   // All text comes from town.json (see README)
   fetch("town.json", { cache: "no-cache" })
     .then((res) => { if (!res.ok) throw new Error("town.json failed to load: " + res.status); return res.json(); })
     .then((town) => {
-      const card = town.fridge_card;
-      document.title = card.title;
-      document.querySelector('meta[name="description"]').setAttribute("content", card.description);
-      document.getElementById("card-title").textContent = card.title;
-      document.getElementById("card-qr").alt = card.qr_alt;
+      const card = town.fridge_card || {};
+      TownUtils.applyFeatures(town);
+      document.title = card.title || town.site.name;
+      const meta = document.querySelector('meta[name="description"]');
+      if (meta && card.description) meta.setAttribute("content", card.description);
+      document.getElementById("card-title").textContent = card.title || "Emergency Card";
+      if (card.qr_alt) document.getElementById("card-qr").alt = card.qr_alt;
       document.querySelector(".url").textContent = town.site.name;
       const row = (cls, label, right) => {
         const div = document.createElement("div");
@@ -188,18 +193,28 @@
         div.append(span, right);
         return div;
       };
-      document.getElementById("card-phones").replaceChildren(...card.phones.map((p) => {
+      document.getElementById("card-phones").replaceChildren(...(card.phones || []).map((p) => {
         const strong = document.createElement("strong");
-        strong.textContent = p.number;
+        // A number nobody has verified yet is shown as a visible TODO, never as a real-looking number
+        const todo = TownUtils.isTodo(p.number) || typeof p.number !== "string" || !p.number.trim();
+        strong.textContent = todo ? "TODO: add number" : p.number;
+        if (todo) strong.className = "todo";
         return row(p.urgent ? " urgent" : "", p.label, strong);
       }));
-      document.getElementById("card-write-ins").replaceChildren(...card.write_ins.map((label) => {
+      document.getElementById("card-write-ins").replaceChildren(...(card.write_ins || []).map((label) => {
         const line = document.createElement("span");
         line.className = "write-in";
         return row("", label, line);
       }));
     })
-    .catch((err) => console.error(err));
+    .catch((err) => {
+      console.error(err);
+      const box = document.createElement("div");
+      box.setAttribute("role", "alert");
+      box.style.cssText = "background:#fdecea;color:#b3261e;padding:1rem;text-align:center;font-weight:700";
+      box.textContent = "This card can't load: " + err.message + " (check town.json).";
+      document.body.prepend(box);
+    });
 </script>
 </body>
 </html>

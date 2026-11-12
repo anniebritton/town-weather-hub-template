@@ -6,7 +6,17 @@
  * utility outage numbers are read from the data file named in town.json
  * (refreshed on a schedule by a GitHub Action, since most utility APIs are
  * CORS-restricted to their own portal).
+ *
+ * Safety rules (see town-utils.js): remote data is rendered as text or as numbers
+ * that passed num(); URLs from town.json must pass safeUrl(); identifiers that go
+ * into URLs must match their documented shape; and missing or broken settings
+ * produce a visible message, never a blank page.
  */
+
+const {
+  SHAPES, isTodo, escapeHtml, num, safeUrl, telHref, ident, getPath, feature, applyFeatures, applyBindings,
+  parseLocalTime, safeDataFile,
+} = (typeof module !== "undefined" && module.exports) ? require("./town-utils.js") : TownUtils;
 
 /* ---------- town config ---------- */
 
@@ -16,19 +26,43 @@ const DEFAULT_THRESHOLDS = {
   wind_watch_mph: 20, wind_caution_mph: 30, gust_watch_mph: 20, gust_caution_mph: 30,
   seas_watch_ft: 5, seas_caution_ft: 8,
 };
+const DEFAULT_STALE_MINUTES = 90; // our copy of the outage data (fetchedAt) older than this is shown as unavailable
+const DEFAULT_SOURCE_AGE_MINUTES = 360; // the utility's own lastUpdated older than this = a frozen feed: unavailable
+/* A limit in minutes must be a positive number; zero, negative, missing or non-numeric values mean "use the default". */
+const positive = (v, fallback) => (num(v) !== null && v > 0 ? v : fallback);
+const MAX_FUTURE_MS = 5 * 60 * 1000; // a timestamp further ahead than this is clock trouble or tampering
+const MAX_COUNT = 1e9; // no utility has a billion customers; this rejects 1e308 and friends
+const REQUIRED_BLOCKS = ["site", "location", "nws"];
 
 function setTown(config) {
   TOWN = config;
 }
 
+/* A description of what is wrong with a loaded town.json, or null if the page can start. */
+function findConfigProblem(town) {
+  if (!town || typeof town !== "object" || Array.isArray(town)) return "town.json must contain a JSON object.";
+  const missing = REQUIRED_BLOCKS.filter((b) => !town[b] || typeof town[b] !== "object");
+  if (missing.length) return `town.json is missing the required ${missing.map((b) => `"${b}"`).join(", ")} block${missing.length > 1 ? "s" : ""}.`;
+  for (const [path, label] of [["site.name", "site.name"], ["site.place", "site.place"]]) {
+    if (typeof getPath(town, path) !== "string" || !getPath(town, path).trim()) return `town.json needs a non-empty "${label}".`;
+  }
+  return null;
+}
+
 function nwsUrls() {
   const n = TOWN.nws;
-  const grid = `https://api.weather.gov/gridpoints/${n.office}/${n.grid_x},${n.grid_y}`;
+  const office = ident(n.office, SHAPES.office);
+  const gx = Number.isInteger(n.grid_x) ? n.grid_x : null;
+  const gy = Number.isInteger(n.grid_y) ? n.grid_y : null;
+  if (!office || gx === null || gy === null) throw new Error('town.json "nws.office", "nws.grid_x" and "nws.grid_y" are not valid.');
+  const zone = ident(n.alerts_zone, SHAPES.alertsZone);
+  if (!zone) throw new Error('town.json "nws.alerts_zone" is not a valid NWS zone code (like MEZ026).');
+  const grid = `https://api.weather.gov/gridpoints/${office}/${gx},${gy}`;
   return {
     forecast: `${grid}/forecast`,
     hourly: `${grid}/forecast/hourly`,
-    marineProducts: `https://api.weather.gov/products/types/CWF/locations/${n.office}`,
-    alerts: `https://api.weather.gov/alerts/active?zone=${n.alerts_zone}`,
+    marineProducts: `https://api.weather.gov/products/types/CWF/locations/${office}`,
+    alerts: `https://api.weather.gov/alerts/active?zone=${zone}`,
   };
 }
 
@@ -54,26 +88,18 @@ function setTile(id, state, value, sub) {
   tile.querySelector(".tile-sub").textContent = sub || "";
 }
 
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
-
 function formatTime(iso) {
-  if (!iso) return "unknown";
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      weekday: "short", month: "short", day: "numeric",
-      hour: "numeric", minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
+  if (typeof iso !== "string" && typeof iso !== "number") return "unknown";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "unknown";
+  return d.toLocaleString(undefined, {
+    weekday: "short", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
 }
 
 function severityClass(severity) {
-  const s = (severity || "").toLowerCase();
+  const s = (typeof severity === "string" ? severity : "").toLowerCase();
   return s === "extreme" || s === "severe" ? "severity-severe" : "severity-watch";
 }
 
@@ -82,7 +108,7 @@ function severityClass(severity) {
  * Returns "", "cond-watch", "cond-caution", or "cond-severe".
  */
 function hazardLevel(text) {
-  const t = (text || "").toLowerCase();
+  const t = (typeof text === "string" ? text : "").toLowerCase();
   if (/hurricane|tropical storm|gale|storm warning|severe thunderstorm|damaging|blizzard|ice storm|storm force/.test(t)) {
     return "cond-severe";
   }
@@ -111,12 +137,29 @@ function hazardLevel(text) {
   return level === 2 ? "cond-caution" : level === 1 ? "cond-watch" : "";
 }
 
+/* A text label for a tint, so the meaning never depends on color alone. */
+const HAZARD_LABELS = {
+  "cond-watch": "Some chance of rougher weather",
+  "cond-caution": "Rougher weather likely",
+  "cond-severe": "Severe weather possible",
+};
+
+function hazardTag(level) {
+  return HAZARD_LABELS[level] ? `<span class="cond-tag">${escapeHtml(HAZARD_LABELS[level])}</span>` : "";
+}
+
 /* ---------- "What this means for <town>" translations (from town.json) ---------- */
 
-// First match wins, so order matters: marine wind warnings come before the /hurricane/ entry they'd otherwise hit
+// First match wins, so order matters: specific entries before general ones.
+// A broken pattern in one entry is skipped; it must never stop alerts from being shown.
 function localMeaning(event) {
-  for (const entry of (TOWN && TOWN.local_meaning) || []) {
-    if (new RegExp(entry.pattern, "i").test(event || "")) return entry.text;
+  const entries = TOWN && Array.isArray(TOWN.local_meaning) ? TOWN.local_meaning : [];
+  for (const entry of entries) {
+    try {
+      if (new RegExp(entry.pattern, "i").test(typeof event === "string" ? event : "")) return entry.text;
+    } catch (err) {
+      console.warn(`Ignoring invalid local_meaning pattern ${JSON.stringify(entry && entry.pattern)}:`, err.message);
+    }
   }
   return null;
 }
@@ -124,20 +167,27 @@ function localMeaning(event) {
 /* ---------- storm mode ---------- */
 
 function isStormAlert(p) {
-  const severities = (TOWN && TOWN.alerts.storm_severities) || ["Extreme", "Severe"];
-  const re = new RegExp((TOWN && TOWN.alerts.storm_event_pattern) || "(?!)", "i");
-  return severities.includes(p?.severity) || re.test(p?.event || "");
+  const alerts = (TOWN && TOWN.alerts) || {};
+  const severities = Array.isArray(alerts.storm_severities) ? alerts.storm_severities : ["Extreme", "Severe"];
+  let byEvent = false;
+  try {
+    byEvent = new RegExp(alerts.storm_event_pattern || "(?!)", "i").test(typeof p?.event === "string" ? p.event : "");
+  } catch (err) {
+    console.warn("Ignoring invalid alerts.storm_event_pattern:", err.message);
+  }
+  return severities.includes(p?.severity) || byEvent;
 }
 
 const DEMO_STORM = typeof location !== "undefined" && new URLSearchParams(location.search).get("storm") === "demo";
 
 function demoAlert() {
+  const event = (TOWN.alerts && TOWN.alerts.demo_event) || "Severe Weather Warning";
   return {
     properties: {
       severity: "Severe",
-      event: TOWN.alerts.demo_event || "Hurricane Warning",
-      headline: `${TOWN.alerts.demo_event || "Hurricane Warning"} issued for ${TOWN.site.area_name} (DEMO — this is a preview, not a real alert)`,
-      description: "This is a demonstration of Storm Mode. During a real warning, the National Weather Service alert text would appear here with details about expected wind, surge, and timing.",
+      event,
+      headline: `${event} issued for ${TOWN.site.area_name || TOWN.site.place} (DEMO — this is a preview, not a real alert)`,
+      description: "This is a demonstration of Storm Mode. During a real warning, the National Weather Service alert text would appear here with details about expected conditions and timing.",
       instruction: "This is a preview only. No storm is expected.",
       effective: new Date().toISOString(),
       expires: new Date(Date.now() + 12 * 3600 * 1000).toISOString(),
@@ -148,15 +198,47 @@ function demoAlert() {
 function enterStormMode(alerts) {
   const active = alerts.filter((f) => isStormAlert(f.properties));
   if (!active.length) return;
-  document.body.classList.add("storm-mode");
   const banner = el("storm-banner");
+  if (!banner) return;
+  document.body.classList.add("storm-mode");
   banner.hidden = false;
-  const p = active[0].properties;
-  el("storm-headline").textContent = `${p.event} is in effect for our area`;
+  const p = active[0].properties || {};
+  el("storm-headline").textContent = `${typeof p.event === "string" ? p.event : "Severe weather"} is in effect for our area`;
   fillStormTide();
 }
 
 /* ---------- weather alerts + forecast ---------- */
+
+/* False only when NWS says it has never heard of the alert zone (HTTP 404); network trouble is not a config error. */
+async function zoneRecognised() {
+  const zone = ident(TOWN.nws && TOWN.nws.alerts_zone, SHAPES.alertsZone);
+  if (!zone) return false;
+  try {
+    const res = await fetch(`https://api.weather.gov/zones/${zone[2] === "C" ? "county" : "forecast"}/${zone}`);
+    return res.status !== 404;
+  } catch {
+    return true;
+  }
+}
+
+function alertCardHtml(f) {
+  const p = f.properties || {};
+  const text = (v, fallback) => (typeof v === "string" && v ? v : fallback);
+  const meaning = localMeaning(p.event);
+  return `
+          <div class="alert-card ${severityClass(p.severity)}">
+            <span class="alert-label">${escapeHtml(text(p.severity, "Alert"))} — ${escapeHtml(text(p.event, "Weather Alert"))}</span>
+            <h3>${escapeHtml(text(p.headline, text(p.event, "Weather Alert")))}</h3>
+            <p>${escapeHtml(text(p.description, "").split("\n").slice(0, 3).join(" "))}</p>
+            <p class="alert-meta">Effective: ${escapeHtml(formatTime(p.effective))} &middot; Expires: ${escapeHtml(formatTime(p.expires))}</p>
+            ${text(p.instruction, "") ? `<p><strong>What to do:</strong> ${escapeHtml(p.instruction.split("\n")[0])}</p>` : ""}
+            ${meaning ? `
+            <details class="alert-local">
+              <summary>What this means for ${escapeHtml(TOWN.site.place)}</summary>
+              <p>${escapeHtml(meaning)}</p>
+            </details>` : ""}
+          </div>`;
+}
 
 async function loadAlerts() {
   const listEl = el("alerts-list");
@@ -164,11 +246,22 @@ async function loadAlerts() {
     const res = await fetch(nwsUrls().alerts);
     if (!res.ok) throw new Error(`Alerts request failed: ${res.status}`);
     const data = await res.json();
-    const alerts = data.features || [];
+    const alerts = (Array.isArray(data.features) ? data.features : []).filter((f) => f && typeof f === "object");
     if (DEMO_STORM) alerts.unshift(demoAlert());
-    enterStormMode(alerts);
+    try { enterStormMode(alerts); } catch (err) { console.error(err); }
 
     if (alerts.length === 0) {
+      if (!(await zoneRecognised())) {
+        const zone = escapeHtml(TOWN.nws.alerts_zone);
+        setStatus("alerts-status", "");
+        listEl.innerHTML = `
+        <div class="alert-card severity-watch">
+          <span class="alert-label">Setup problem</span>
+          <p>The National Weather Service does not recognise the alert zone <strong>${zone}</strong> in town.json, so this page cannot tell you whether there are alerts. Check the weather.gov link below.</p>
+        </div>`;
+        setTile("tile-weather", "warn", "Check setup", "Alert zone not recognised");
+        return;
+      }
       setStatus("alerts-status", "");
       listEl.innerHTML = `
         <div class="alert-card severity-none">
@@ -178,25 +271,18 @@ async function loadAlerts() {
       setTile("tile-weather", "ok", "All clear", "No active alerts");
     } else {
       setStatus("alerts-status", `${alerts.length} active alert${alerts.length > 1 ? "s" : ""}:`);
+      // One malformed alert must not hide the others
       listEl.innerHTML = alerts.map((f) => {
-        const p = f.properties || {};
-        const meaning = localMeaning(p.event);
-        return `
-          <div class="alert-card ${severityClass(p.severity)}">
-            <span class="alert-label">${escapeHtml(p.severity || "Alert")} — ${escapeHtml(p.event || "Weather Alert")}</span>
-            <h3>${escapeHtml(p.headline || p.event || "Weather Alert")}</h3>
-            <p>${escapeHtml((p.description || "").split("\n").slice(0, 3).join(" "))}</p>
-            <p class="alert-meta">Effective: ${formatTime(p.effective)} &middot; Expires: ${formatTime(p.expires)}</p>
-            ${p.instruction ? `<p><strong>What to do:</strong> ${escapeHtml(p.instruction.split("\n")[0])}</p>` : ""}
-            ${meaning ? `
-            <details class="alert-local">
-              <summary>What this means for ${escapeHtml(TOWN.site.place)}</summary>
-              <p>${escapeHtml(meaning)}</p>
-            </details>` : ""}
-          </div>`;
+        try {
+          return alertCardHtml(f);
+        } catch (err) {
+          console.error(err);
+          return `<div class="alert-card severity-watch"><span class="alert-label">Alert</span><p>A weather alert was issued but could not be displayed. See weather.gov.</p></div>`;
+        }
       }).join("");
       const worst = alerts.some((f) => ["Extreme", "Severe"].includes(f.properties?.severity));
-      const first = alerts[0].properties?.event || "Weather alert";
+      const firstEvent = alerts[0].properties?.event;
+      const first = typeof firstEvent === "string" && firstEvent ? firstEvent : "Weather alert";
       setTile("tile-weather", worst ? "bad" : "warn", first,
         alerts.length > 1 ? `+ ${alerts.length - 1} more alert${alerts.length > 2 ? "s" : ""}` : "Tap Alerts below for details");
     }
@@ -216,12 +302,18 @@ async function loadForecast() {
     const data = await res.json();
     const periods = (data.properties?.periods || []).slice(0, 4);
     if (!periods.length) throw new Error("Empty forecast");
-    grid.innerHTML = periods.map((p) => `
-      <div class="forecast-card ${hazardLevel(p.detailedForecast)}">
+    grid.innerHTML = periods.map((p) => {
+      const temp = num(p.temperature);
+      const unit = p.temperatureUnit === "C" ? "C" : "F";
+      const level = hazardLevel(p.detailedForecast);
+      return `
+      <div class="forecast-card ${level}">
         <h4>${escapeHtml(p.name)}</h4>
-        <span class="temp">${p.temperature}°${escapeHtml(p.temperatureUnit)}</span>
+        <span class="temp">${temp === null ? "—" : `${Math.round(temp)}°${unit}`}</span>
         <p>${escapeHtml(p.detailedForecast)}</p>
-      </div>`).join("");
+        ${hazardTag(level)}
+      </div>`;
+    }).join("");
   } catch (err) {
     console.error(err);
     grid.innerHTML = `<p class="status-line">Forecast unavailable — use the weather.gov link below.</p>`;
@@ -243,7 +335,9 @@ async function loadMarineForecast() {
     if (!productRes.ok) throw new Error(`Marine product fetch failed: ${productRes.status}`);
     const productData = await productRes.json();
 
-    const section = extractZoneSection(productData.productText || "", TOWN.nws.marine_zone);
+    const zone = ident(TOWN.nws.marine_zone, SHAPES.marineZone);
+    if (!zone) throw new Error('town.json "nws.marine_zone" is not a valid NWS zone code');
+    const section = extractZoneSection(typeof productData.productText === "string" ? productData.productText : "", zone);
     if (!section) throw new Error("Zone section not found");
 
     setStatus("marine-status", "");
@@ -251,9 +345,11 @@ async function loadMarineForecast() {
     grid.innerHTML = periods.map((p) => {
       const d = parseMarineDetail(p.body);
       const arrow = windArrow(d.wind);
+      const level = hazardLevel(p.body);
       return `
-      <div class="marine-period ${hazardLevel(p.body)}">
+      <div class="marine-period ${level}">
         <h4>${escapeHtml(p.name)}</h4>
+        ${hazardTag(level)}
         <div class="m-seas">${escapeHtml(compressSeas(d.seas))}<span class="m-seas-label">seas</span></div>
         ${d.wind ? `
         <div class="m-row">
@@ -387,7 +483,7 @@ let nextHighTide = null; // shared with the storm banner
 
 function tideDate(t) {
   // API returns "YYYY-MM-DD HH:MM" in local station time
-  return new Date(t.replace(" ", "T"));
+  return new Date(String(t).replace(" ", "T"));
 }
 
 function formatTideTime(d) {
@@ -397,19 +493,33 @@ function formatTideTime(d) {
   return d.toLocaleString(undefined, opts);
 }
 
+/* The NOAA station ID if it has a plausible shape, else null. */
+function tideStation() {
+  return ident(TOWN && TOWN.tides && TOWN.tides.station, SHAPES.tideStation);
+}
+
+function tideTableUrl() {
+  const station = tideStation();
+  return station
+    ? `https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${encodeURIComponent(station)}`
+    : "https://tidesandcurrents.noaa.gov/";
+}
+
 async function fetchTidePredictions(ymd) {
-  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=${encodeURIComponent(TOWN.site.app_id)}&station=${TOWN.tides.station}&begin_date=${ymd}&range=72&datum=MLLW&time_zone=lst_ldt&units=english&interval=hilo&format=json`;
+  const station = tideStation();
+  if (!station) throw new Error('town.json "tides.station" is not a valid NOAA station ID');
+  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=${encodeURIComponent(TOWN.site.app_id || "town_weather_hub")}&station=${encodeURIComponent(station)}&begin_date=${ymd}&range=72&datum=MLLW&time_zone=lst_ldt&units=english&interval=hilo&format=json`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Tide request failed: ${res.status}`);
   const data = await res.json();
   const predictions = (data.predictions || [])
     .map((p) => ({
-      time: tideDate(p.t),
-      height: Number.parseFloat(p.v),
-      high: p.type === "H",
-      low: p.type === "L",
+      time: tideDate(p?.t),
+      height: Number.parseFloat(p?.v),
+      high: p?.type === "H",
+      low: p?.type === "L",
     }))
-    .filter((p) => !Number.isNaN(p.time.getTime()) && Number.isFinite(p.height));
+    .filter((p) => !Number.isNaN(p.time.getTime()) && Number.isFinite(p.height) && (p.high || p.low));
   if (!predictions.length) throw new Error("No tide predictions returned");
   return predictions;
 }
@@ -546,66 +656,147 @@ async function loadTides() {
     }
   } catch (err) {
     console.error(err);
+    const link = escapeHtml(tideTableUrl());
     strip.innerHTML = `<p class="status-line">Tide times unavailable right now —
-      <a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${TOWN.tides.station}" target="_blank" rel="noopener">see NOAA's tide table ↗</a></p>`;
+      <a href="${link}" target="_blank" rel="noopener noreferrer">see NOAA's tide table ↗</a></p>`;
     chart.innerHTML = `<p class="status-line">The tide chart is unavailable right now —
-      <a href="https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${TOWN.tides.station}" target="_blank" rel="noopener">see NOAA's tide chart ↗</a></p>`;
+      <a href="${link}" target="_blank" rel="noopener noreferrer">see NOAA's tide chart ↗</a></p>`;
   }
 }
 
 function fillStormTide() {
   const line = el("storm-tide");
-  if (!line || !document.body.classList.contains("storm-mode") || !nextHighTide) return;
+  if (!line || !feature(TOWN, "tides") || !document.body.classList.contains("storm-mode") || !nextHighTide) return;
   line.textContent = `Next high tide: ${formatTideTime(nextHighTide.time)} (${nextHighTide.height.toFixed(1)} ft) — flooding risk is greatest around this time.`;
 }
 
 /* ---------- power outages ---------- */
 
+/*
+ * Decide whether an outage data file can be shown as current. Returns {ok:true} or {ok:false, reason}.
+ * Anything that is not clearly real, recent data from scripts/fetch_outages.py is rejected, so the
+ * page says "Unavailable" instead of a reassuring "On" it cannot back up.
+ */
+function checkOutageData(data, staleMinutes = DEFAULT_STALE_MINUTES, now = Date.now(), { timeZone, maxSourceAgeMinutes } = {}) {
+  const bad = (reason) => ({ ok: false, reason });
+  const count = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT; // whole, non-negative, plausible
+  if (!data || typeof data !== "object" || Array.isArray(data)) return bad("not a JSON object");
+  if (data.sample === true) return bad("sample data, not from a real utility");
+  if (data.status !== undefined && data.status !== "ok") return bad(`status is ${JSON.stringify(data.status)}`);
+  if (typeof data.lastUpdated !== "string" || !data.lastUpdated.trim()) return bad("no lastUpdated");
+  // The utility's own timestamp is local time with no zone: read it in the town's time zone. If that is
+  // not possible (odd format, missing or invalid location.timezone) we cannot tell how old the data is,
+  // so we must not present it as current.
+  const stamped = parseLocalTime(data.lastUpdated, timeZone);
+  if (stamped === null) return bad("can't interpret the utility's lastUpdated time (check location.timezone)");
+  if (stamped - now > MAX_FUTURE_MS) return bad("lastUpdated is in the future");
+  const sourceLimit = positive(maxSourceAgeMinutes, DEFAULT_SOURCE_AGE_MINUTES);
+  // a fresh heartbeat (fetchedAt) on a frozen feed must not read as "no outages"
+  if (now - stamped > sourceLimit * 60000) return bad(`the utility's own data is more than ${sourceLimit} minutes old`);
+  if (!data.totals || !count(data.totals.outages)) return bad("totals.outages is not a whole number of customers");
+  for (const key of ["town", "county"]) {
+    if (!(key in data)) return bad(`no ${key} entry`);
+    if (data[key] !== null && (typeof data[key] !== "object" || !count(data[key].Outages))) return bad(`${key}.Outages is not a whole number of customers`);
+  }
+  const fetched = typeof data.fetchedAt === "string" ? Date.parse(data.fetchedAt) : NaN;
+  if (Number.isNaN(fetched)) return bad("no valid fetchedAt time");
+  if (fetched - now > MAX_FUTURE_MS) return bad("fetchedAt is in the future");
+  const limit = positive(staleMinutes, DEFAULT_STALE_MINUTES);
+  if (now - fetched > limit * 60000) return bad(`data is more than ${limit} minutes old`);
+  return { ok: true };
+}
+
 async function loadOutages() {
   const grid = el("outage-stats");
-  const o = TOWN.outages;
+  if (!grid) return;
+  const o = TOWN.outages || {};
   const place = escapeHtml(TOWN.site.place);
-  const utility = escapeHtml(o.utility_short);
+  const utilityName = typeof o.utility_short === "string" && o.utility_short ? o.utility_short : "your utility";
+  const utility = escapeHtml(utilityName);
+  const unavailable = (why) => {
+    grid.innerHTML = `<p class="status-line">Live outage numbers unavailable${why ? ` (${escapeHtml(why)})` : ""} — use ${utility}'s outage map below.</p>`;
+    setTile("tile-power", null, "Unavailable", `Check ${utilityName}'s map`);
+    setStatus("outage-updated", "");
+  };
+
+  if (!o.provider || o.provider === "none") {
+    unavailable("this site isn't connected to the utility's data");
+    return;
+  }
+  // Only ever read a file inside data/ (a config typo must not point the page at some other URL)
+  const file = safeDataFile(o.data_file);
+  if (!file) {
+    console.error(`outages.data_file ${JSON.stringify(o.data_file)} must be a file inside data/`);
+    unavailable("outages.data_file in town.json must be a file inside data/");
+    return;
+  }
   try {
-    const res = await fetch(o.data_file, { cache: "no-cache" });
+    const res = await fetch(file, { cache: "no-cache" });
     if (!res.ok) throw new Error(`Outage data fetch failed: ${res.status}`);
     const data = await res.json();
+    const verdict = checkOutageData(data, o.stale_after_minutes, Date.now(), {
+      timeZone: TOWN.location && TOWN.location.timezone,
+      maxSourceAgeMinutes: o.max_source_age_minutes,
+    });
+    if (!verdict.ok) {
+      console.warn(`Outage data rejected: ${verdict.reason}`);
+      unavailable(
+        /^data is more/.test(verdict.reason) ? "data is out of date"
+          : /^the utility's own/.test(verdict.reason) ? "the utility's data has not updated recently"
+            : /location\.timezone/.test(verdict.reason) ? "can't read the utility's timestamp; check location.timezone"
+              : "");
+      return;
+    }
 
-    const town = data.town;
-    const county = data.county;
-    const townOut = town ? town.Outages ?? 0 : 0;
-    const countyOut = county ? county.Outages ?? 0 : 0;
-    const totalOut = data.totals?.outages ?? 0;
+    const townOut = data.town ? data.town.Outages : 0;
+    const countyOut = data.county ? data.county.Outages : 0;
+    const totalOut = data.totals.outages;
+    const fmt = (n) => n.toLocaleString();
+    const countyLabel = escapeHtml(typeof o.county_label === "string" ? o.county_label : "the county");
+
+    // No row for our town. That only means "no outages here" if we can trust the match. We can't when:
+    //  - the utility lists other towns but ours isn't one of them and nobody has confirmed the spelling
+    //    (outages.match_verified): most likely a typo in match_town; or
+    //  - the utility reports outages overall but lists no towns at all: the town list is empty, so a
+    //    missing row proves nothing.
+    // Say "No data" in those cases, never "None"/"On".
+    const listed = Array.isArray(data.towns) ? data.towns.length : 0;
+    const unverifiedMatch = data.town === null && (
+      (listed > 0 && data.matchVerified !== true) || (listed === 0 && totalOut > 0));
+    if (unverifiedMatch) {
+      const matchName = typeof o.match_town === "string" ? o.match_town : TOWN.site.place;
+      grid.innerHTML = `<p class="status-line">No data for ${escapeHtml(matchName)} (check match_town in town.json). Use ${utility}'s outage map below.</p>`;
+      setTile("tile-power", "warn", "No data", `for ${matchName}: check match_town`);
+      setStatus("outage-updated", "");
+      return;
+    }
 
     grid.innerHTML = `
       <div class="stat-card ${townOut ? "stat-bad" : "stat-ok"}">
-        <span class="stat-value">${townOut ? townOut.toLocaleString() : "None"}</span>
+        <span class="stat-value">${townOut ? fmt(townOut) : "None"}</span>
         <span class="stat-label">${townOut ? `customers out in ${place}` : `No outages in ${place}`}</span>
       </div>
       <div class="stat-card ${countyOut ? "stat-bad" : "stat-ok"}">
-        <span class="stat-value">${countyOut ? countyOut.toLocaleString() : "None"}</span>
-        <span class="stat-label">${countyOut ? `customers out in ${escapeHtml(o.county_label)}` : `No outages in ${escapeHtml(o.county_label)}`}</span>
+        <span class="stat-value">${countyOut ? fmt(countyOut) : "None"}</span>
+        <span class="stat-label">${countyOut ? `customers out in ${countyLabel}` : `No outages in ${countyLabel}`}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-value">${Number(totalOut).toLocaleString()}</span>
+        <span class="stat-value">${fmt(totalOut)}</span>
         <span class="stat-label">customers out across all of ${utility}</span>
       </div>`;
 
-    if (data.lastUpdated) {
-      el("outage-updated").textContent = `${o.utility_short} data as of ${data.lastUpdated} (${o.timestamp_zone_label}). Refreshes every 15 minutes.`;
-    }
+    setStatus("outage-updated", `${utilityName} data as of ${data.lastUpdated} (${o.timestamp_zone_label || "local time"}). Refreshes every 15 minutes.`);
 
     if (townOut) {
-      setTile("tile-power", "bad", `${townOut.toLocaleString()} out`, `in ${TOWN.site.place} — see Power section`);
+      setTile("tile-power", "bad", `${fmt(townOut)} out`, `in ${TOWN.site.place} — see Power section`);
     } else if (countyOut) {
-      setTile("tile-power", "warn", `On in ${TOWN.site.place}`, `${countyOut.toLocaleString()} out elsewhere in ${o.county_label}`);
+      setTile("tile-power", "warn", `On in ${TOWN.site.place}`, `${fmt(countyOut)} out elsewhere in ${o.county_label || "the county"}`);
     } else {
-      setTile("tile-power", "ok", "On", `No outages reported in ${o.county_label}`);
+      setTile("tile-power", "ok", "On", `No outages reported in ${o.county_label || "the county"}`);
     }
   } catch (err) {
     console.error(err);
-    grid.innerHTML = `<p class="status-line">Live outage numbers unavailable — use ${utility}'s outage map below.</p>`;
-    setTile("tile-power", null, "Unavailable", `Check ${o.utility_short}'s map`);
+    unavailable("");
   }
 }
 
@@ -670,6 +861,7 @@ function setupWaterSlider() {
   });
   // Only reload the map when the user lets go of the slider
   slider.addEventListener("change", () => {
+    if (!iframe.src || iframe.src === "about:blank") return;
     const url = new URL(iframe.src);
     url.searchParams.set("water_level", `${slider.value}.0`);
     iframe.src = url.toString();
@@ -678,104 +870,203 @@ function setupWaterSlider() {
 
 /* ---------- fill static page text from town.json ---------- */
 
-function getPath(obj, path) {
-  return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj);
-}
-
 function renderLinkList(id, items) {
   const list = el(id);
   if (!list) return;
-  list.innerHTML = (items || []).map((r) => `
+  list.innerHTML = (Array.isArray(items) ? items : []).map((r) => {
+    const url = safeUrl(r && r.url);
+    if (!url) return ""; // a link we can't verify is safe is not shown
+    return `
     <li>
-      <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.title)} ↗</a>
+      <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)} ↗</a>
       <p>${escapeHtml(r.description)}</p>
-    </li>`).join("");
+    </li>`;
+  }).join("");
 }
 
-/*
- * Markup hooks used in index.html / fridge-card.html:
- *   data-town="site.place"        -> element text
- *   data-town-href="outages.map_url"        -> href
- *   data-town-tel="outages.phone_dial"      -> href="tel:<value>"
- */
-function applyTown(doc = document) {
-  doc.querySelectorAll("[data-town]").forEach((n) => {
-    const v = getPath(TOWN, n.dataset.town);
-    if (v != null) n.textContent = v;
-  });
-  doc.querySelectorAll("[data-town-href]").forEach((n) => {
-    const v = getPath(TOWN, n.dataset.townHref);
-    if (v != null) n.setAttribute("href", v);
-  });
-  doc.querySelectorAll("[data-town-tel]").forEach((n) => {
-    const v = getPath(TOWN, n.dataset.townTel);
-    if (v != null) n.setAttribute("href", `tel:${v}`);
-  });
+/* Run one part of the page setup; a failure in one part must not take the others down. */
+function safely(name, fn, problems) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`Setting up "${name}" failed:`, err);
+    if (problems) problems.push(name);
+  }
 }
 
 function applyHubPage() {
-  const { site, location: loc, nws, tides, fire, drought } = TOWN;
-  applyTown();
-  document.title = `${site.name} — Weather, Power & Coast`;
-  const desc = document.querySelector('meta[name="description"]');
-  if (desc) desc.setAttribute("content", site.description);
+  const problems = [];
+  const { site, location: loc, nws } = TOWN;
+  const marine = feature(TOWN, "marine");
 
-  const radar = el("radar-img");
-  if (radar) {
-    radar.src = `https://radar.weather.gov/ridge/standard/${nws.radar_station}_loop.gif`;
-    radar.alt = `Animated weather radar loop from ${nws.radar_name}`;
+  safely("features and text", () => {
+    applyFeatures(TOWN);
+    applyBindings(TOWN);
+    document.title = `${site.name} — ${marine ? "Weather, Power & Coast" : "Weather & Power"}`;
+    const desc = document.querySelector('meta[name="description"]');
+    if (desc && site.description) desc.setAttribute("content", site.description);
+  }, problems);
+
+  safely("canonical URL", () => {
+    const url = safeUrl(site.public_url);
+    if (!url) return;
+    let link = document.querySelector('link[rel="canonical"]');
+    if (!link) { link = document.createElement("link"); link.rel = "canonical"; document.head.append(link); }
+    link.href = url;
+  }, problems);
+
+  const lat = num(loc.lat);
+  const lon = num(loc.lon);
+
+  safely("radar", () => {
+    const radar = el("radar-img");
+    const station = ident(nws.radar_station, SHAPES.radar);
+    if (radar && station) {
+      radar.src = `https://radar.weather.gov/ridge/standard/${station}_loop.gif`;
+      radar.alt = `Animated weather radar loop from ${nws.radar_name || "the National Weather Service"}. The loop shows recent rain, snow and storm movement over the area.`;
+    } else if (radar) {
+      radar.closest("figure")?.remove();
+    }
+  }, problems);
+
+  safely("forecast link", () => {
+    const link = el("forecast-link");
+    if (link && lat !== null && lon !== null) link.href = `https://forecast.weather.gov/MapClick.php?lat=${lat}&lon=${lon}`;
+  }, problems);
+
+  if (marine) {
+    safely("marine links and map", () => {
+      const zone = ident(nws.marine_zone, SHAPES.marineZone);
+      const marineLink = el("marine-link");
+      if (marineLink) {
+        if (zone) marineLink.href = `https://forecast.weather.gov/shmrn.php?mz=${zone.toLowerCase()}`;
+        else marineLink.remove();
+      }
+      const tideLink = el("tide-table-link");
+      if (tideLink) tideLink.href = tideTableUrl();
+
+      const windy = el("windy-map");
+      if (windy && lat !== null && lon !== null) {
+        const zoom = num(loc.map_zoom) ?? 9;
+        windy.title = `Interactive wind and wave map centered on ${site.place}, from Windy.com`;
+        windy.src = `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&zoom=${zoom}&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&type=map&location=coordinates&metricWind=mph&metricTemp=%C2%B0F`;
+      }
+    }, problems);
   }
-  el("forecast-link").href = `https://forecast.weather.gov/MapClick.php?lat=${loc.lat}&lon=${loc.lon}`;
-  el("marine-link").href = `https://forecast.weather.gov/shmrn.php?mz=${nws.marine_zone.toLowerCase()}`;
-  el("tide-table-link").href = `https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=${tides.station}`;
 
-  const windy = el("windy-map");
-  windy.title = `Interactive wind and wave map centered on ${site.place}, from Windy.com`;
-  windy.src = `https://embed.windy.com/embed2.html?lat=${loc.lat}&lon=${loc.lon}&detailLat=${loc.lat}&detailLon=${loc.lon}&zoom=${loc.map_zoom}&level=surface&overlay=waves&product=ecmwf&menu=&message=true&marker=true&calendar=now&type=map&location=coordinates&metricWind=mph&metricTemp=%C2%B0F`;
+  if (feature(TOWN, "climate_coastal")) {
+    safely("climate map", () => {
+      const climate = el("climate-map");
+      if (climate && lat !== null && lon !== null) {
+        const level = num(Number(el("water-level")?.value)) ?? 3;
+        climate.title = `Coastal flood risk map of ${site.place} from Climate Central, highlighting areas below the selected water level`;
+        climate.src = `https://coastal.climatecentral.org/embed/map/12/${lon}/${lat}/?theme=water_level&map_type=water_level_above_mhhw&basemap=roadmap&contiguous=true&elevation_model=best_available&refresh=true&water_level=${level}.0&water_unit=ft`;
+      }
+    }, problems);
+  }
 
-  const climate = el("climate-map");
-  climate.title = `Coastal flood risk map of ${site.place} from Climate Central, highlighting areas below the selected water level`;
-  climate.src = `https://coastal.climatecentral.org/embed/map/12/${loc.lon}/${loc.lat}/?theme=water_level&map_type=water_level_above_mhhw&basemap=roadmap&contiguous=true&elevation_model=best_available&refresh=true&water_level=${el("water-level").value}.0&water_unit=ft`;
+  safely("wildfire map", () => {
+    const fire = TOWN.fire || {};
+    const frame = el("fire-map");
+    const url = safeUrl(fire.map_url);
+    if (fire.embed === false || !url) {
+      // No embeddable map (the agency may block framing): show only the full-screen link, if there is one
+      el("fire-embed")?.remove();
+      el("fire-legend")?.remove();
+    } else if (frame) {
+      frame.src = url;
+      if (fire.map_title) frame.title = fire.map_title;
+    }
+  }, problems);
 
-  const fireFrame = el("fire-map");
-  fireFrame.src = fire.map_url;
-  fireFrame.title = fire.map_title;
+  safely("drought map", () => {
+    const drought = TOWN.drought || {};
+    const img = el("drought-img");
+    const url = safeUrl(drought.image_url);
+    if (img && url) {
+      img.src = url;
+      if (drought.image_alt) img.alt = drought.image_alt;
+    } else if (img) {
+      img.closest("figure")?.remove();
+    }
+  }, problems);
 
-  const drImg = el("drought-img");
-  drImg.src = drought.image_url;
-  drImg.alt = drought.image_alt;
+  safely("resource lists", () => {
+    const resources = TOWN.resources || {};
+    renderLinkList("resources-flood", resources.flood);
+    renderLinkList("resources-drought", resources.drought);
+    renderLinkList("resources-pests", resources.pests);
+  }, problems);
 
-  renderLinkList("resources-flood", TOWN.resources.flood);
-  renderLinkList("resources-drought", TOWN.resources.drought);
-  renderLinkList("resources-pests", TOWN.resources.pests);
+  return problems;
 }
 
 /* ---------- boot (skipped when running under Node for tests) ---------- */
 
-// Resolves once town.json is loaded and applied; pests.js waits on this too.
+/* A message nobody can miss, for when the page cannot start at all. */
+function showBootError(message) {
+  console.error(message);
+  const box = document.createElement("div");
+  box.className = "boot-error";
+  box.setAttribute("role", "alert");
+  const strong = document.createElement("strong");
+  strong.textContent = "This page can't start.";
+  const p = document.createElement("p");
+  p.textContent = `${message} If you run this site, fix town.json (run "npm run check-config" to see what is missing).`;
+  box.append(strong, p);
+  document.body.prepend(box);
+  document.querySelectorAll(".tile-value.skeleton").forEach((n) => { n.classList.remove("skeleton"); n.textContent = "Unavailable"; });
+  document.querySelectorAll(".skeleton-block").forEach((n) => n.remove());
+}
+
+// Resolves to true once town.json is loaded and applied (false if the page could not start);
+// pests.js waits on this too. Never rejects.
 const townReady = typeof document !== "undefined" ? bootHub() : null;
 
 async function bootHub() {
-  const res = await fetch("town.json", { cache: "no-cache" });
-  if (!res.ok) throw new Error(`town.json failed to load: ${res.status}`);
-  setTown(await res.json());
+  try {
+    let res;
+    try {
+      res = await fetch("town.json", { cache: "no-cache" });
+    } catch (err) {
+      throw new Error(`town.json could not be loaded (${err.message}).`);
+    }
+    if (!res.ok) throw new Error(`town.json could not be loaded (HTTP ${res.status}).`);
+    let town;
+    try {
+      town = await res.json();
+    } catch (err) {
+      throw new Error(`town.json is not valid JSON (${err.message}).`);
+    }
+    const problem = findConfigProblem(town);
+    if (problem) throw new Error(problem);
+    setTown(town);
+  } catch (err) {
+    showBootError(err.message);
+    return false;
+  }
+
   applyHubPage();
-  setupTabs();
-  setupWaterSlider();
-  loadAlerts();
-  loadForecast();
-  loadMarineForecast();
-  loadOutages();
-  loadTides();
+  safely("tabs", setupTabs);
+  safely("water slider", setupWaterSlider);
+  const marine = feature(TOWN, "marine");
+  const run = (name, fn) => safely(name, () => { Promise.resolve(fn()).catch((err) => console.error(`${name}:`, err)); });
+  run("alerts", loadAlerts);
+  run("forecast", loadForecast);
+  if (marine) run("marine forecast", loadMarineForecast);
+  run("outages", loadOutages);
+  if (feature(TOWN, "tides")) run("tides", loadTides);
 
   const lastUpdated = el("last-updated");
   if (lastUpdated) lastUpdated.textContent = `Page loaded: ${new Date().toLocaleString()}`;
+  return true;
 }
 
-/* Allow Node-based tests to import the text helpers */
+/* Allow Node-based tests to import the helpers */
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    setTown, nwsUrls, hazardLevel, localMeaning, isStormAlert, seasHeadline, extractZoneSection, parseMarinePeriods,
-    parseMarineDetail, compressSeas, compressWind, compressWaves, windArrow,
+    setTown, nwsUrls, hazardLevel, hazardTag, localMeaning, isStormAlert, seasHeadline, extractZoneSection, parseMarinePeriods,
+    parseMarineDetail, compressSeas, compressWind, compressWaves, windArrow, checkOutageData, findConfigProblem,
+    tideStation, tideTableUrl,
   };
 }
