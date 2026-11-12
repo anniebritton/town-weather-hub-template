@@ -125,3 +125,33 @@ test("safeDataFile accepts only a plain file path inside data/", () => {
     assert.equal(safeDataFile(bad), null, String(bad));
   }
 });
+
+// The same case files are run through scripts/fetch_outages.py (tests/python), so the page and the script cannot drift apart.
+const fs = require("node:fs");
+const path = require("node:path");
+const fixtures = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, "..", "fixtures", name), "utf8"));
+
+test("parseLocalTime agrees with every case in tests/fixtures/time-cases.json", () => {
+  const cases = fixtures("time-cases.json");
+  assert.ok(cases.length > 40);
+  for (const { value, tz, utc, note } of cases) {
+    const ms = parseLocalTime(value, tz === null ? undefined : tz);
+    const got = ms === null ? null : new Date(ms).toISOString().replace(".000Z", "Z");
+    assert.equal(got, utc, `${JSON.stringify(value)} in ${JSON.stringify(tz)} (${note})`);
+  }
+});
+
+test("safeDataFile agrees with every case in tests/fixtures/data-file-cases.json", () => {
+  const cases = fixtures("data-file-cases.json");
+  assert.ok(cases.length > 25);
+  for (const { path: p, ok, note } of cases) assert.equal(safeDataFile(p) !== null, ok, `${JSON.stringify(p)} (${note})`);
+});
+
+test("parseLocalTime rejects minute 60, second 61, and a spring-forward gap; it takes the first of an ambiguous time", () => {
+  assert.equal(parseLocalTime("2030-06-01 07:60:00", "UTC"), null);
+  assert.equal(parseLocalTime("2030-06-01 07:25:61", "UTC"), null);
+  assert.equal(parseLocalTime("2026-03-08 02:30:00", "America/New_York"), null);
+  assert.equal(new Date(parseLocalTime("2026-11-01 01:30:00", "America/New_York")).toISOString(), "2026-11-01T05:30:00.000Z");
+  assert.equal(parseLocalTime("2030-06-01T07:25:00+99:99"), null);
+  assert.equal(parseLocalTime("2030-06-01T07:25:00+15:00"), null);
+});

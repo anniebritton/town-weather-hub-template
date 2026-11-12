@@ -1,6 +1,8 @@
 """Offline tests for scripts/fetch_outages.py (no network, no API key)."""
 import datetime
 import io
+import json
+import math
 import os
 import sys
 import unittest
@@ -184,6 +186,108 @@ class TimeTests(unittest.TestCase):
              redirect_stdout(io.StringIO()), mock.patch("sys.stderr", new_callable=io.StringIO) as err:
             self.assertEqual(fetch_outages.main([]), 1)
         self.assertIn("frozen", err.getvalue())
+
+
+def _fixture(name):
+    with open(os.path.join(os.path.dirname(__file__), "..", "fixtures", name), encoding="utf-8") as f:
+        return json.load(f)
+
+
+class SharedCaseTests(unittest.TestCase):
+    """The same case files are run through parseLocalTime()/safeDataFile() in town-utils.js (tests/unit),
+    so the page and this script cannot drift apart."""
+
+    def test_time_cases_match_the_page(self):
+        cases = _fixture("time-cases.json")
+        self.assertGreater(len(cases), 40)
+        for case in cases:
+            got = fetch_outages._parse_utility_time(case["value"], case["tz"])
+            got = None if got is None else got.strftime("%Y-%m-%dT%H:%M:%SZ")
+            self.assertEqual(got, case["utc"], f"{case['value']!r} in {case['tz']!r} ({case['note']})")
+
+    def test_data_file_cases_match_the_page(self):
+        cases = _fixture("data-file-cases.json")
+        self.assertGreater(len(cases), 25)
+        for case in cases:
+            if case["ok"]:
+                path = fetch_outages.resolve_data_file({"data_file": case["path"]})
+                self.assertTrue(path.endswith(case["path"].replace("/", os.sep)), case["path"])
+            else:
+                with self.assertRaises(fetch_outages.ConfigError, msg=f"{case['path']!r} ({case['note']})"):
+                    fetch_outages.resolve_data_file({"data_file": case["path"]})
+
+    def test_non_string_data_files_are_refused(self):
+        for bad in (None, 5, [], {}, True):
+            with self.assertRaises(fetch_outages.ConfigError):
+                fetch_outages.resolve_data_file({"data_file": bad})
+
+
+class LimitTests(unittest.TestCase):
+    NOW = datetime.datetime(2030, 6, 1, 12, 0, tzinfo=datetime.timezone.utc)
+
+    def test_limits_that_are_not_positive_finite_numbers_use_the_default(self):
+        for bad in (0, -1, -360, math.nan, math.inf, -math.inf, "60", None, True, False, [], {}):
+            self.assertEqual(fetch_outages._limit_minutes(bad), fetch_outages.DEFAULT_SOURCE_AGE_MINUTES, repr(bad))
+        self.assertEqual(fetch_outages._limit_minutes(45), 45)
+        self.assertEqual(fetch_outages._limit_minutes(2.5), 2.5)
+
+    def test_an_enormous_limit_is_clamped_instead_of_overflowing(self):
+        self.assertEqual(fetch_outages._limit_minutes(10 ** 30), fetch_outages.MAX_LIMIT_MINUTES)
+        county = {**COUNTY, "lastUpdated": "2030-06-01 06:50:00"}
+        fetch_outages.validate_response(county, TOWN, TZ, 10 ** 30, now=self.NOW)   # must not raise OverflowError
+
+    def test_zero_or_negative_limit_does_not_reject_everything(self):
+        county = {**COUNTY, "lastUpdated": "2030-06-01 05:00:00"}   # two hours old: under the 360 minute default
+        for bad in (0, -5, math.nan):
+            fetch_outages.validate_response(county, TOWN, TZ, bad, now=self.NOW)
+        frozen = {**COUNTY, "lastUpdated": "2030-05-31 20:00:00"}
+        with self.assertRaises(fetch_outages.ResponseError):
+            fetch_outages.validate_response(frozen, TOWN, TZ, 0, now=self.NOW)   # 0 means default, which still rejects 11 hours
+
+    def test_check_age_false_skips_only_the_age_check(self):
+        frozen = {**COUNTY, "lastUpdated": "2030-05-31 20:00:00"}
+        fetch_outages.validate_response(frozen, TOWN, TZ, now=self.NOW, check_age=False)
+        with self.assertRaises(fetch_outages.ResponseError):   # an unreadable timestamp is still rejected
+            fetch_outages.validate_response({**COUNTY, "lastUpdated": "garbage"}, TOWN, TZ, now=self.NOW, check_age=False)
+        with self.assertRaises(fetch_outages.ResponseError):   # and so is a timestamp in the future
+            fetch_outages.validate_response({**COUNTY, "lastUpdated": "2030-06-01 08:30:00"}, TOWN, TZ, now=self.NOW, check_age=False)
+
+
+class TownsModeTests(unittest.TestCase):
+    """--towns lists the names the utility uses. It must work even when the feed is stale."""
+
+    def run_towns(self, county, town, cfg_extra=None):
+        cfg = {"provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",
+               "match_town": "EXAMPLETON", "match_county": "EXAMPLE", "data_file": "data/outages.json", **(cfg_extra or {})}
+        with mock.patch.object(fetch_outages, "load_config", return_value={"location": {"timezone": TZ}, "outages": cfg}), \
+             mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
+             mock.patch.object(fetch_outages, "fetch_json", side_effect=lambda u, h, k, f: county if f == "county" else town), \
+             mock.patch("builtins.open", side_effect=AssertionError("--towns must not write files")), \
+             redirect_stdout(io.StringIO()) as out, mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            code = fetch_outages.main(["--towns"])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_towns_lists_names_and_does_not_crash(self):
+        code, out, err = self.run_towns(COUNTY, TOWN)
+        self.assertEqual(code, 0, err)
+        for name in ("EXAMPLETON", "ELSEWHERE", "EXAMPLE", "OTHER"):
+            self.assertIn(name, out)
+        self.assertIn("match_town 'EXAMPLETON': found", out)
+
+    def test_towns_works_when_the_feed_is_hours_old(self):
+        stale = {**COUNTY, "lastUpdated": stamp(60 * 30)}   # 30 hours old
+        code, out, err = self.run_towns(stale, TOWN)
+        self.assertEqual(code, 0, err)
+        self.assertIn("ELSEWHERE", out)
+
+    def test_towns_says_when_the_configured_name_is_not_listed(self):
+        code, out, _ = self.run_towns(COUNTY, TOWN, {"match_town": "TYPOVILLE"})
+        self.assertEqual(code, 0)
+        self.assertIn("not in this list", out)
+
+    def test_towns_still_survives_an_absurd_max_source_age(self):
+        code, _, err = self.run_towns(COUNTY, TOWN, {"max_source_age_minutes": 1e308})
+        self.assertEqual(code, 0, err)
 
 
 class WriteDecisionTests(unittest.TestCase):

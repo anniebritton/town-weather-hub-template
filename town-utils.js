@@ -65,8 +65,13 @@ const TownUtils = (() => {
   /*
    * Utility timestamps look like "2030-06-01 07:25:00": local time with NO zone. Interpret them in the
    * town's IANA time zone (location.timezone) and return epoch milliseconds, or null when that can't be
-   * done reliably (unrecognised format, missing or invalid zone). null means "unverifiable": the caller
-   * must not present the data as current. An explicit Z or +hh:mm offset in the text is honoured.
+   * done reliably. null means "unverifiable": the caller must not present the data as current.
+   * (scripts/fetch_outages.py implements the same rules; tests/fixtures/time-cases.json is run through both.)
+   *   - the date and time must exist (no month 13, 24:00, minute 60, second 61, Feb 30)
+   *   - a local time that does not exist because clocks jumped forward is unverifiable
+   *   - a local time that happens twice when clocks go back means the FIRST occurrence
+   *   - an explicit Z or +hh:mm offset in the text is honoured, if it is within +-14:00 and minutes <= 59
+   *   - no zone in the text and no valid IANA zone configured: unverifiable
    */
   function parseLocalTime(value, timeZone) {
     if (typeof value !== "string") return null;
@@ -74,14 +79,17 @@ const TownUtils = (() => {
     if (!m) return null;
     const [, y, mo, d, h, mi, s = "0", zone] = m;
     const naive = Date.UTC(+y, +mo - 1, +d, +h, +mi, +s);
-    const check = new Date(naive);
-    // Date.UTC silently rolls over impossible dates (month 13, 25:00); reject them
-    if (Number.isNaN(naive) || check.getUTCMonth() !== +mo - 1 || check.getUTCDate() !== +d || check.getUTCHours() !== +h) return null;
+    const c = new Date(naive);
+    // Date.UTC silently rolls impossible values over (month 13, 25:00, minute 60, second 61); reject them
+    if (Number.isNaN(naive) || c.getUTCMonth() !== +mo - 1 || c.getUTCDate() !== +d || c.getUTCHours() !== +h
+        || c.getUTCMinutes() !== +mi || c.getUTCSeconds() !== +s) return null;
     if (zone) {
       if (/z/i.test(zone)) return naive;
       const digits = zone.slice(1).replace(":", "");
-      const minutes = (zone[0] === "-" ? -1 : 1) * (+digits.slice(0, 2) * 60 + +digits.slice(2, 4));
-      return naive - minutes * 60000;
+      const hours = +digits.slice(0, 2);
+      const mins = +digits.slice(2, 4);
+      if (hours > 14 || mins > 59) return null;
+      return naive - (zone[0] === "-" ? -1 : 1) * (hours * 60 + mins) * 60000;
     }
     if (typeof timeZone !== "string" || !timeZone.trim()) return null;
     try {
@@ -93,9 +101,15 @@ const TownUtils = (() => {
         const p = Object.fromEntries(fmt.formatToParts(new Date(utc)).map((x) => [x.type, x.value]));
         return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - utc;
       };
-      // two passes settle the offset around daylight-saving changes
-      const guess = naive - offsetAt(naive);
-      return naive - offsetAt(guess);
+      // The zone's offset on either side of this wall-clock time (a day each way spans any single change).
+      // A candidate instant is valid only if the zone really has that offset at that instant.
+      const DAY = 86400000;
+      const valid = [...new Set([offsetAt(naive - DAY), offsetAt(naive + DAY)])]
+        .map((off) => ({ off, utc: naive - off }))
+        .filter(({ off, utc }) => offsetAt(utc) === off)
+        .map(({ utc }) => utc);
+      if (valid.length === 0) return null; // clocks jumped over this wall-clock time: it never happened
+      return Math.min(...valid); // ambiguous (clocks went back): the first occurrence
     } catch {
       return null; // not a valid IANA zone name
     }

@@ -100,9 +100,11 @@ function findPlaceholders(town, { qrFile, checkBindings = true } = {}) {
   if (dataFile !== undefined && !safeDataFile(dataFile)) {
     add("outages.data_file", dataFile, "must be a file inside data/ (for example data/outages.json); the page and the fetch script refuse anything else");
   }
-  const maxAge = town.outages && town.outages.max_source_age_minutes;
-  if (maxAge !== undefined && !(Number.isInteger(maxAge) && maxAge > 0)) {
-    add("outages.max_source_age_minutes", maxAge, "must be a whole number of minutes (default 360)");
+  for (const [key, fallback] of [["max_source_age_minutes", 360], ["stale_after_minutes", 90]]) {
+    const v = town.outages && town.outages[key];
+    if (v !== undefined && !(Number.isInteger(v) && v > 0)) {
+      add(`outages.${key}`, v, `must be a whole number of minutes above zero (a value of zero or less is ignored and ${fallback} is used)`);
+    }
   }
   for (const [k, v] of Object.entries(town.features || {})) {
     if (typeof v !== "boolean") add(`features.${k}`, v, `must be true or false (not ${JSON.stringify(v)}); ${isOff(v) ? "it is being treated as OFF" : "it is being treated as on"}`);

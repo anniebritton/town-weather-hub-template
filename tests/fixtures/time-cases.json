@@ -1,0 +1,350 @@
+[
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": "America/Chicago",
+  "utc": "2030-06-01T12:25:00Z",
+  "note": "CDT"
+ },
+ {
+  "value": "2030-01-15 07:25:00",
+  "tz": "America/Chicago",
+  "utc": "2030-01-15T13:25:00Z",
+  "note": "CST"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": "UTC",
+  "utc": "2030-06-01T07:25:00Z",
+  "note": ""
+ },
+ {
+  "value": "2030-06-01T07:25",
+  "tz": "UTC",
+  "utc": "2030-06-01T07:25:00Z",
+  "note": "T separator, seconds omitted"
+ },
+ {
+  "value": "  2030-06-01 07:25:00  ",
+  "tz": "UTC",
+  "utc": "2030-06-01T07:25:00Z",
+  "note": "surrounding whitespace"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": "Asia/Kolkata",
+  "utc": "2030-06-01T01:55:00Z",
+  "note": "UTC+5:30"
+ },
+ {
+  "value": "2028-02-29 12:00:00",
+  "tz": "UTC",
+  "utc": "2028-02-29T12:00:00Z",
+  "note": "leap day"
+ },
+ {
+  "value": "2026-03-08 01:59:59",
+  "tz": "America/New_York",
+  "utc": "2026-03-08T06:59:59Z",
+  "note": "last second before the jump"
+ },
+ {
+  "value": "2026-03-08 02:00:00",
+  "tz": "America/New_York",
+  "utc": null,
+  "note": "does not exist: clocks jumped forward"
+ },
+ {
+  "value": "2026-03-08 02:30:00",
+  "tz": "America/New_York",
+  "utc": null,
+  "note": "does not exist: clocks jumped forward"
+ },
+ {
+  "value": "2026-03-08 02:59:59",
+  "tz": "America/New_York",
+  "utc": null,
+  "note": "does not exist: clocks jumped forward"
+ },
+ {
+  "value": "2026-03-08 03:00:00",
+  "tz": "America/New_York",
+  "utc": "2026-03-08T07:00:00Z",
+  "note": "first second after the jump"
+ },
+ {
+  "value": "2030-03-10 03:30:00",
+  "tz": "America/New_York",
+  "utc": "2030-03-10T07:30:00Z",
+  "note": "after spring forward, EDT"
+ },
+ {
+  "value": "2026-10-04 02:15:00",
+  "tz": "Australia/Lord_Howe",
+  "utc": null,
+  "note": "30 minute daylight-saving jump"
+ },
+ {
+  "value": "2026-11-01 00:59:00",
+  "tz": "America/New_York",
+  "utc": "2026-11-01T04:59:00Z",
+  "note": "before the overlap, EDT"
+ },
+ {
+  "value": "2026-11-01 01:30:00",
+  "tz": "America/New_York",
+  "utc": "2026-11-01T05:30:00Z",
+  "note": "ambiguous: the FIRST occurrence (EDT)"
+ },
+ {
+  "value": "2026-11-01 02:00:00",
+  "tz": "America/New_York",
+  "utc": "2026-11-01T07:00:00Z",
+  "note": "after the overlap, EST"
+ },
+ {
+  "value": "2030-06-01 07:25:61",
+  "tz": "UTC",
+  "utc": null,
+  "note": "second 61"
+ },
+ {
+  "value": "2030-06-01 07:25:60",
+  "tz": "UTC",
+  "utc": null,
+  "note": "second 60"
+ },
+ {
+  "value": "2030-06-01 07:60:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "minute 60"
+ },
+ {
+  "value": "2030-06-01 24:00:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "hour 24"
+ },
+ {
+  "value": "2030-06-01 25:00:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "hour 25"
+ },
+ {
+  "value": "2030-13-01 07:25:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "month 13"
+ },
+ {
+  "value": "2030-00-10 07:25:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "month 0"
+ },
+ {
+  "value": "2030-06-32 07:25:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "day 32"
+ },
+ {
+  "value": "2030-02-30 07:25:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "Feb 30"
+ },
+ {
+  "value": "2030-02-29 07:25:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "Feb 29 in a non-leap year"
+ },
+ {
+  "value": "2030-04-31 07:25:00",
+  "tz": "UTC",
+  "utc": null,
+  "note": "April 31"
+ },
+ {
+  "value": "2030-06-01",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "06/01/2030 7:25 AM",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "yesterday",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "2030-06-01 7:25",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "20300601T072500",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "2030-06-01 07:25:00 PM",
+  "tz": "UTC",
+  "utc": null,
+  "note": "unrecognised format"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": "Nowhere/Land",
+  "utc": null,
+  "note": "unknown zone"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": "",
+  "utc": null,
+  "note": "empty zone"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": " ",
+  "utc": null,
+  "note": "blank zone"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": null,
+  "utc": null,
+  "note": "no zone"
+ },
+ {
+  "value": "2030-06-01 07:25:00",
+  "tz": "utc+3",
+  "utc": null,
+  "note": "not an IANA name"
+ },
+ {
+  "value": "2030-06-01T07:25:00Z",
+  "tz": null,
+  "utc": "2030-06-01T07:25:00Z",
+  "note": "Z"
+ },
+ {
+  "value": "2030-06-01T07:25:00z",
+  "tz": null,
+  "utc": "2030-06-01T07:25:00Z",
+  "note": "lowercase z"
+ },
+ {
+  "value": "2030-06-01T07:25:00+02:00",
+  "tz": null,
+  "utc": "2030-06-01T05:25:00Z",
+  "note": ""
+ },
+ {
+  "value": "2030-06-01T07:25:00-05:00",
+  "tz": null,
+  "utc": "2030-06-01T12:25:00Z",
+  "note": ""
+ },
+ {
+  "value": "2030-06-01T07:25:00+0530",
+  "tz": null,
+  "utc": "2030-06-01T01:55:00Z",
+  "note": "no colon"
+ },
+ {
+  "value": "2030-06-01T07:25:00+14:00",
+  "tz": null,
+  "utc": "2030-05-31T17:25:00Z",
+  "note": "the largest real offset"
+ },
+ {
+  "value": "2030-06-01T07:25:00-12:00",
+  "tz": null,
+  "utc": "2030-06-01T19:25:00Z",
+  "note": "the smallest real offset"
+ },
+ {
+  "value": "2030-06-01T07:25:00+14:59",
+  "tz": null,
+  "utc": "2030-05-31T16:26:00Z",
+  "note": "limit: hours 14, minutes 59"
+ },
+ {
+  "value": "2030-06-01T07:25:00+15:00",
+  "tz": null,
+  "utc": null,
+  "note": "offset hours > 14"
+ },
+ {
+  "value": "2030-06-01T07:25:00+15:00",
+  "tz": "America/Chicago",
+  "utc": null,
+  "note": "offset hours > 14 (a zone is configured; the bad offset still wins)"
+ },
+ {
+  "value": "2030-06-01T07:25:00-15:00",
+  "tz": null,
+  "utc": null,
+  "note": "offset hours > 14"
+ },
+ {
+  "value": "2030-06-01T07:25:00-15:00",
+  "tz": "America/Chicago",
+  "utc": null,
+  "note": "offset hours > 14 (a zone is configured; the bad offset still wins)"
+ },
+ {
+  "value": "2030-06-01T07:25:00+99:99",
+  "tz": null,
+  "utc": null,
+  "note": "offset 99:99"
+ },
+ {
+  "value": "2030-06-01T07:25:00+99:99",
+  "tz": "America/Chicago",
+  "utc": null,
+  "note": "offset 99:99 (a zone is configured; the bad offset still wins)"
+ },
+ {
+  "value": "2030-06-01T07:25:00+02:60",
+  "tz": null,
+  "utc": null,
+  "note": "offset minutes 60"
+ },
+ {
+  "value": "2030-06-01T07:25:00+02:60",
+  "tz": "America/Chicago",
+  "utc": null,
+  "note": "offset minutes 60 (a zone is configured; the bad offset still wins)"
+ },
+ {
+  "value": "2030-06-01T07:25:00+24:00",
+  "tz": null,
+  "utc": null,
+  "note": "offset 24 hours"
+ },
+ {
+  "value": "2030-06-01T07:25:00+24:00",
+  "tz": "America/Chicago",
+  "utc": null,
+  "note": "offset 24 hours (a zone is configured; the bad offset still wins)"
+ }
+]

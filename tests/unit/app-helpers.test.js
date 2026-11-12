@@ -275,3 +275,26 @@ test("daylight saving is handled when reading the utility's time", () => {
   assert.equal(winter("2030-01-15 05:50:00").ok, true);   // 11:50Z, ten minutes ago
   assert.equal(winter("2030-01-15 06:30:00").ok, false);  // 12:30Z, in the future
 });
+
+test("zero, negative and non-numeric limits mean 'use the default', not 'everything is stale'", () => {
+  const frozen = good({ lastUpdated: "2030-05-31 20:00:00" });   // 11 hours old: over the 360 minute default
+  const recent = good({ lastUpdated: "2030-06-01 05:00:00" });   // 2 hours old: under it
+  for (const bad of [0, -1, -360, NaN, Infinity, "60", null, undefined, true, {}]) {
+    assert.equal(check(recent, 90, { ...TZ, maxSourceAgeMinutes: bad }).ok, true, `source limit ${String(bad)} falls back to 360`);
+    assert.equal(check(frozen, 90, { ...TZ, maxSourceAgeMinutes: bad }).ok, false, `source limit ${String(bad)} still rejects a frozen feed`);
+  }
+  const old = good({ fetchedAt: "2030-06-01T09:00:00Z" });       // we fetched it 3 hours ago
+  const fresh = good({ fetchedAt: "2030-06-01T11:30:00Z" });
+  for (const bad of [0, -5, NaN, "90", null, undefined]) {
+    assert.equal(check(fresh, bad).ok, true, `stale limit ${String(bad)} falls back to 90`);
+    assert.equal(check(old, bad).ok, false, `stale limit ${String(bad)} still rejects an old fetch`);
+  }
+});
+
+test("a time that never happened (clocks jumped forward) is unverifiable, so the data is not shown as current", () => {
+  const now = Date.parse("2026-03-08T08:00:00Z"); // 04:00 EDT
+  const data = good({ fetchedAt: "2026-03-08T07:55:00Z", lastUpdated: "2026-03-08 02:30:00" });
+  const v = checkOutageData(data, 90, now, { timeZone: "America/New_York" });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /can't interpret/);
+});

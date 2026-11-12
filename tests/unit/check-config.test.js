@@ -172,8 +172,11 @@ test("outages.data_file outside data/ and a bad max_source_age_minutes are repor
     assert.match(hit.hint, /inside data\//);
   }
   t.outages.data_file = "data/outages.json";
-  for (const bad of [0, -5, 1.5, "360"]) {
-    t.outages.max_source_age_minutes = bad;
-    assert.ok(paths(t).includes("outages.max_source_age_minutes"), String(bad));
+  for (const key of ["max_source_age_minutes", "stale_after_minutes"]) {
+    for (const bad of [0, -5, 1.5, "360", null]) {
+      const copy = clone(t);
+      copy.outages[key] = bad;
+      assert.ok(paths(copy).includes(`outages.${key}`), `${key} = ${JSON.stringify(bad)}`);
+    }
   }
 });

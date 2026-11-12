@@ -40,6 +40,7 @@ For another utility, adapt fetch_json(), validate_response() and build_result().
 """
 import datetime
 import json
+import math
 import os
 import re
 import sys
@@ -48,6 +49,8 @@ import urllib.request
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 HEARTBEAT_MINUTES = 45
 DEFAULT_SOURCE_AGE_MINUTES = 360  # the utility's own lastUpdated older than this = a frozen feed
+MAX_LIMIT_MINUTES = 10 * 365 * 24 * 60  # ten years: keeps timedelta arithmetic far from overflow
+DATA_FILE_RE = re.compile(r"^data/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")  # same rule as safeDataFile() in town-utils.js
 MAX_COUNT = 10 ** 9        # no utility has a billion customers; rejects absurd or hostile values
 MAX_FUTURE = datetime.timedelta(minutes=5)
 
@@ -91,8 +94,14 @@ _TIME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?
 
 def _parse_utility_time(value, tz_name=None):
     """Utility timestamps look like '2030-06-01 07:25:00': local time with no zone. Read them in the
-    town's IANA time zone and return an aware UTC datetime. None means "cannot be read reliably"
-    (odd format, impossible date, missing or unknown time zone): the caller must not trust the data."""
+    town's IANA time zone and return an aware UTC datetime. None means "cannot be read reliably": the
+    caller must not trust the data. The same rules are implemented by parseLocalTime() in town-utils.js
+    and tests/fixtures/time-cases.json is run through both:
+      - the date and time must exist (no month 13, hour 24, minute 60, second 61, Feb 30)
+      - a local time that does not exist because clocks jumped forward is unverifiable
+      - a local time that happens twice when clocks go back means the FIRST occurrence
+      - an explicit Z or +hh:mm offset is honoured, within +-14:00 and minutes <= 59
+      - no zone in the text and no valid IANA zone configured: unverifiable"""
     if not isinstance(value, str):
         return None
     m = _TIME_RE.match(value.strip())
@@ -107,16 +116,23 @@ def _parse_utility_time(value, tz_name=None):
         if zone.upper() == "Z":
             return naive.replace(tzinfo=datetime.timezone.utc)
         digits = zone[1:].replace(":", "")
-        offset = datetime.timedelta(hours=int(digits[:2]), minutes=int(digits[2:4]))
+        hours, minutes = int(digits[:2]), int(digits[2:4])
+        if hours > 14 or minutes > 59:
+            return None
+        offset = datetime.timedelta(hours=hours, minutes=minutes)
         return (naive - (offset if zone[0] == "+" else -offset)).replace(tzinfo=datetime.timezone.utc)
     if not isinstance(tz_name, str) or not tz_name.strip():
         return None
     try:
         from zoneinfo import ZoneInfo
-        local = naive.replace(tzinfo=ZoneInfo(tz_name))
+        zone_info = ZoneInfo(tz_name)
+        local = naive.replace(tzinfo=zone_info)  # fold=0: the first occurrence of an ambiguous time
     except Exception:  # unknown zone name, or no tz database on this machine
         return None
-    return local.astimezone(datetime.timezone.utc)
+    utc = local.astimezone(datetime.timezone.utc)
+    if utc.astimezone(zone_info).replace(tzinfo=None) != naive:
+        return None  # clocks jumped over this wall-clock time: it never happened
+    return utc
 
 
 class ConfigError(ValueError):
@@ -128,6 +144,10 @@ def resolve_data_file(cfg):
     name = cfg.get("data_file")
     if not isinstance(name, str) or not name.strip():
         raise ConfigError("outages.data_file is missing")
+    # Same plain-path rule as the page and check-config: data/<segments>, letters digits . _ - only,
+    # no "." or ".." segments (the realpath check below additionally stops symlink escapes)
+    if not DATA_FILE_RE.fullmatch(name) or any(seg in (".", "..") for seg in name.split("/")):
+        raise ConfigError(f"outages.data_file {name!r} must be a plain file path inside data/ (letters, digits, . _ - only)")
     data_dir = os.path.realpath(os.path.join(ROOT, "data"))
     path = os.path.realpath(os.path.join(ROOT, name))
     if os.path.commonpath([data_dir, path]) != data_dir or path == data_dir:
@@ -135,7 +155,15 @@ def resolve_data_file(cfg):
     return path
 
 
-def validate_response(county, town, timezone=None, max_source_age_minutes=DEFAULT_SOURCE_AGE_MINUTES, now=None):
+def _limit_minutes(value):
+    """A positive, finite number of minutes, else the default (zero, negative, NaN, inf, bool, text, None)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return DEFAULT_SOURCE_AGE_MINUTES
+    return min(value, MAX_LIMIT_MINUTES)
+
+
+def validate_response(county, town, timezone=None, max_source_age_minutes=DEFAULT_SOURCE_AGE_MINUTES, now=None,
+                      check_age=True):
     """Raise ResponseError unless both responses look like real, current outage data.
     `timezone` is location.timezone from town.json (needed to read the utility's local timestamp)."""
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -157,8 +185,8 @@ def validate_response(county, town, timezone=None, max_source_age_minutes=DEFAUL
             "(unrecognised format, or location.timezone in town.json is missing or invalid)")
     if stamped - now > MAX_FUTURE:
         raise ResponseError("county response has a 'lastUpdated' in the future")
-    limit = max_source_age_minutes if isinstance(max_source_age_minutes, (int, float)) and not isinstance(max_source_age_minutes, bool) and max_source_age_minutes > 0 else DEFAULT_SOURCE_AGE_MINUTES
-    if now - stamped > datetime.timedelta(minutes=limit):
+    limit = _limit_minutes(max_source_age_minutes)
+    if check_age and now - stamped > datetime.timedelta(minutes=limit):
         raise ResponseError(
             f"the utility's own data is more than {int(limit)} minutes old (lastUpdated {county['lastUpdated']!r}); "
             "its feed looks frozen")
@@ -279,7 +307,7 @@ def main(argv=None):
     town = fetch_json(cfg["api_url"], cfg["api_key_header"], key, "town")
 
     if "--towns" in argv:
-        validate_response(county, town, timezone, float("inf"))  # listing names works even if the feed is stale
+        validate_response(county, town, timezone, check_age=False)  # listing names works even if the feed is stale
         for t in sorted({t["properties"].get("town", "") for t in town["features"]}):
             print("town  ", t)
         for c in sorted({c["properties"].get("county", "") for c in county["features"]}):

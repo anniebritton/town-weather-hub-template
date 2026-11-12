@@ -32,6 +32,12 @@ All notable changes to this template. Format follows [Keep a Changelog](https://
 - Actions updated to current majors; Dependabot no longer watches pip (there is no manifest).
 - The template's default drought map now uses `current_conus_trd.png` (the previous `current_us_trd.png` returns 404).
 
+### Fixed (review round 4)
+- `fetch_outages.py --towns` crashed (`OverflowError`) because it passed an infinite age limit; it now skips only the age check, and an enormous or non-finite `max_source_age_minutes` is clamped instead of overflowing.
+- The page and the script now apply exactly the same rules to the utility's `lastUpdated`, checked by shared case files (`tests/fixtures/time-cases.json`, `data-file-cases.json`) that both test suites run: minute 60 and second 61 are rejected in the page too; a local time that never happened (clocks jumped forward) is unverifiable in both; an ambiguous local time (clocks went back) means the first occurrence in both; explicit offsets must be within +-14:00 with minutes <= 59.
+- A limit of zero or less (`max_source_age_minutes`, `stale_after_minutes`) now means "use the default" in both places (the page used to treat it as "everything is stale"); `check-config` flags it.
+- `outages.data_file` is held to the same plain-path rule (`data/` plus letters, digits, `.`, `_`, `-`) in the script as in the page and `check-config` (the script also rejects a trailing newline).
+
 ### Fixed (review round 3)
 - A frozen utility feed behind a fresh fetch no longer reads as "No outages": the utility's own `lastUpdated` must be younger than `outages.max_source_age_minutes` (default 360), on the page and in `fetch_outages.py` (which rejects it and keeps the last good file).
 - The utility's `lastUpdated` (local time, no zone) is now read in `location.timezone` (Intl in the page, zoneinfo in the script) instead of as UTC, so the future-date and age checks are correct. A missing or invalid zone, or an unreadable format, means unverifiable: shown as unavailable.

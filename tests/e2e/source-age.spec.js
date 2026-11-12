@@ -111,3 +111,25 @@ test.describe("no town row and no town list", () => {
     await expect(page.locator("#tile-power .tile-value")).toHaveText("On");
   });
 });
+
+test.describe("a zero or negative limit in town.json means 'use the default', not 'everything is stale'", () => {
+  for (const bad of [0, -5]) {
+    test(`max_source_age_minutes = ${bad} and stale_after_minutes = ${bad}: fresh data is still shown`, async ({ page }) => {
+      await load(page, { townPatch: { outages: { provider: "avangrid", max_source_age_minutes: bad, stale_after_minutes: bad } }, outages: freshOutages() });
+      await expect(page.locator("#tile-power .tile-value")).toHaveText("5 out");
+    });
+    test(`max_source_age_minutes = ${bad}: a frozen feed is still rejected (the default applies)`, async ({ page }) => {
+      await load(page, { townPatch: { outages: { provider: "avangrid", max_source_age_minutes: bad } }, outages: freshOutages({ lastUpdated: utilityStamp(Date.now() - 11 * HOUR) }) });
+      await unavailable(page);
+    });
+  }
+});
+
+test("a lastUpdated that names a clock time which never happened (spring-forward gap) is unverifiable", async ({ page }) => {
+  // The browser clock is fixed to just after 03:00 on 2026-03-08 in New York, so 02:30 that morning "looks" recent
+  await page.clock.setFixedTime(new Date("2026-03-08T07:10:00Z"));
+  await load(page, { townPatch: { location: { timezone: "America/New_York" }, outages: { provider: "avangrid" } },
+    outages: freshOutages({ fetchedAt: "2026-03-08T07:05:00Z", lastUpdated: "2026-03-08 02:30:00" }) });
+  await unavailable(page);
+  await expect(page.locator("#outage-stats")).toContainText("location.timezone");
+});

@@ -28,6 +28,8 @@ const DEFAULT_THRESHOLDS = {
 };
 const DEFAULT_STALE_MINUTES = 90; // our copy of the outage data (fetchedAt) older than this is shown as unavailable
 const DEFAULT_SOURCE_AGE_MINUTES = 360; // the utility's own lastUpdated older than this = a frozen feed: unavailable
+/* A limit in minutes must be a positive number; zero, negative, missing or non-numeric values mean "use the default". */
+const positive = (v, fallback) => (num(v) !== null && v > 0 ? v : fallback);
 const MAX_FUTURE_MS = 5 * 60 * 1000; // a timestamp further ahead than this is clock trouble or tampering
 const MAX_COUNT = 1e9; // no utility has a billion customers; this rejects 1e308 and friends
 const REQUIRED_BLOCKS = ["site", "location", "nws"];
@@ -688,7 +690,7 @@ function checkOutageData(data, staleMinutes = DEFAULT_STALE_MINUTES, now = Date.
   const stamped = parseLocalTime(data.lastUpdated, timeZone);
   if (stamped === null) return bad("can't interpret the utility's lastUpdated time (check location.timezone)");
   if (stamped - now > MAX_FUTURE_MS) return bad("lastUpdated is in the future");
-  const sourceLimit = num(maxSourceAgeMinutes) ?? DEFAULT_SOURCE_AGE_MINUTES;
+  const sourceLimit = positive(maxSourceAgeMinutes, DEFAULT_SOURCE_AGE_MINUTES);
   // a fresh heartbeat (fetchedAt) on a frozen feed must not read as "no outages"
   if (now - stamped > sourceLimit * 60000) return bad(`the utility's own data is more than ${sourceLimit} minutes old`);
   if (!data.totals || !count(data.totals.outages)) return bad("totals.outages is not a whole number of customers");
@@ -699,7 +701,7 @@ function checkOutageData(data, staleMinutes = DEFAULT_STALE_MINUTES, now = Date.
   const fetched = typeof data.fetchedAt === "string" ? Date.parse(data.fetchedAt) : NaN;
   if (Number.isNaN(fetched)) return bad("no valid fetchedAt time");
   if (fetched - now > MAX_FUTURE_MS) return bad("fetchedAt is in the future");
-  const limit = num(staleMinutes) ?? DEFAULT_STALE_MINUTES;
+  const limit = positive(staleMinutes, DEFAULT_STALE_MINUTES);
   if (now - fetched > limit * 60000) return bad(`data is more than ${limit} minutes old`);
   return { ok: true };
 }
