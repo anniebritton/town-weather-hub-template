@@ -13,8 +13,12 @@ test("safeUrl accepts only https and normalises it", () => {
 
 test("telHref makes a link only for a plausible number, never for TODO", () => {
   assert.equal(telHref("1-800-555-0100"), "tel:18005550100");
-  assert.equal(telHref("+1 (207) 555-0100"), "tel:+12075550100");
-  for (const bad of ["TODO", "todo: add number", "911x", "12", "javascript:1", "", null, 18005550100]) assert.equal(telHref(bad), null, String(bad));
+  assert.equal(telHref("+1 (207) 555-0100"), "tel:12075550100");
+  for (const bad of ["TODO", "todo: add number", "911x", "12", "javascript:1", "", null, 18005550100,
+    "911 or 555-0100", "(555) 123-0100 ext. 12", "555-0100", "1800696100012", "12075550123 12075550124",
+    "call 207-555-0123", "207-555-0123 or 207-555-0124"]) assert.equal(telHref(bad), null, String(bad));
+  assert.equal(telHref("(207) 555-0123"), "tel:2075550123");
+  assert.equal(telHref("+1 207 555 0123"), "tel:12075550123");
 });
 
 test("isTodo recognises the placeholder convention", () => {
@@ -36,6 +40,12 @@ test("ident enforces the documented identifier shapes", () => {
   assert.equal(ident("8416908", SHAPES.tideStation), "8416908");
   assert.equal(ident("84/../x", SHAPES.tideStation), null);
   assert.equal(ident(8416908, SHAPES.tideStation), null);
+});
+
+test("feature values like 'false', 0, 'no' and 'off' count as off, not on", () => {
+  for (const off of ["false", "FALSE", " no ", "off", "0", 0, false]) assert.equal(feature({ features: { pests: off } }, "pests"), false, String(off));
+  for (const on of [true, "true", 1, undefined]) assert.equal(feature({ features: { pests: on } }, "pests"), true, String(on));
+  assert.equal(feature({ features: { marine: "false" } }, "tides"), false);
 });
 
 test("features default to on, and turning marine off turns tides off", () => {

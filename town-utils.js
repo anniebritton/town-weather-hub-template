@@ -44,11 +44,17 @@ const TownUtils = (() => {
     }
   }
 
-  /* "tel:+15551230100" for a plausible phone number, else null. */
+  /*
+   * "tel:18005550100" only when the whole string is ONE plain U.S./Canada phone number (10 or 11 digits,
+   * with optional spaces, dots, dashes, parentheses and a leading + or 1). Anything with extra text or
+   * extra digits ("911 or 555-0100", "555-123-0100 ext. 12", two numbers) returns null, so the page
+   * shows the text but never dials a guess.
+   */
   function telHref(v) {
     if (typeof v !== "string" || isTodo(v)) return null;
-    const digits = v.replace(/[^\d+]/g, "");
-    return /^\+?\d{7,15}$/.test(digits) ? `tel:${digits}` : null;
+    if (!/^\s*\+?1?[\s.\-]*\(?\d{3}\)?[\s.\-]*\d{3}[\s.\-]*\d{4}\s*$/.test(v)) return null;
+    const digits = v.replace(/\D/g, "");
+    return digits.length === 10 || (digits.length === 11 && digits[0] === "1") ? `tel:${digits}` : null;
   }
 
   /* The value if it matches the identifier shape, else null. */
@@ -64,10 +70,13 @@ const TownUtils = (() => {
    * Optional sections. Everything is on unless town.json says `"features": { "x": false }`.
    * Tides live inside the marine tab, so turning marine off turns tides off too.
    */
+  const OFF_VALUES = new Set(["false", "0", "no", "off"]);
+  const isOff = (v) => v === false || v === 0 || (typeof v === "string" && OFF_VALUES.has(v.trim().toLowerCase()));
+
   function feature(town, name) {
     const f = town && town.features && typeof town.features === "object" ? town.features : {};
-    if (name === "tides" && f.marine === false) return false;
-    return f[name] !== false;
+    if (name === "tides" && isOff(f.marine)) return false;
+    return !isOff(f[name]);
   }
 
   /* Remove every element marked data-feature="a b" whose feature is off. */
@@ -103,7 +112,7 @@ const TownUtils = (() => {
     });
   }
 
-  const api = { SHAPES, isTodo, escapeHtml, num, safeUrl, telHref, ident, getPath, feature, applyFeatures, applyBindings };
+  const api = { SHAPES, isTodo, isOff, escapeHtml, num, safeUrl, telHref, ident, getPath, feature, applyFeatures, applyBindings };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   return api;
 })();

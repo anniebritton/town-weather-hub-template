@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Town Weather Hub — Weather, Power &amp; Coast</title>
-<meta name="description" content="One place for local residents to check weather alerts, power outages, marine conditions, wildfire risk, and long-term climate risk.">
+<title>Town Weather Hub</title>
+<meta name="description" content="One place for local residents to check weather alerts, power outages, wildfire risk, and more.">
 <!-- Fonts come from Google Fonts (visitors' IP addresses reach Google). To avoid that, delete these three <link> lines; the page falls back to system fonts. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,7 @@
   <div class="wrap">
     <p class="hero-kicker" data-town="site.kicker">Your town</p>
     <h1 data-town="site.name">Town Weather Hub</h1>
-    <p class="hero-tagline" data-town="site.tagline">Weather, power, and coastal conditions.</p>
+    <p class="hero-tagline" data-town="site.tagline">Local weather and power conditions.</p>
 
     <div class="status-row" role="group" aria-label="Current local status at a glance">
       <div class="status-tile" id="tile-weather">
@@ -229,7 +229,7 @@
           id="windy-map"
           src="about:blank"
           title="Interactive wind and wave map from Windy.com"
-          sandbox="allow-scripts allow-same-origin allow-popups"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           loading="lazy">
         </iframe>
@@ -267,7 +267,7 @@
           id="fire-map"
           src="about:blank"
           title="Daily wildfire danger map"
-          sandbox="allow-scripts allow-same-origin allow-popups"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           loading="lazy">
         </iframe>
@@ -333,11 +333,11 @@
       <details class="meter-method">
         <summary>How these estimates work — and how well</summary>
         <p>
-          Each meter combines today's hourly forecast (temperature, humidity, and wind) with the seasonal calendar
-          for a northern temperate climate (see the README to adjust it for your latitude). Mosquitoes are scored on the dusk hours, when they bite most; ticks on the daytime
-          hours. Temperature sets the ceiling, and dry air or wind pulls the estimate down. The seasonal calendar
-          follows the deer tick life cycle — the April–July nymph peak (when most Lyme transmission happens) and
-          the October–November adult season — and the June–August mosquito peak.
+          Each meter combines today's hourly forecast (temperature, humidity, and wind) with a simple seasonal
+          calendar. Mosquitoes are scored on the dusk hours, when they bite most; ticks on the daytime
+          hours. Temperature sets the ceiling, and dry air or wind pulls the estimate down. The calendar is a
+          generic default (a spring-to-fall tick season and a summer mosquito peak) that the person who runs this
+          site should adjust for the local climate; it is not specific to any region.
         </p>
         <p>
           <strong>What we checked:</strong> ten seasonal scenarios (January cold snap, July heat wave, a breezy dry
@@ -393,7 +393,7 @@
             <iframe id="climate-map"
               src="about:blank"
               title="Coastal flood risk map from Climate Central, highlighting areas below the selected water level"
-              sandbox="allow-scripts allow-same-origin allow-popups"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
               referrerpolicy="no-referrer"
               loading="lazy">
             </iframe>

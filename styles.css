@@ -1212,3 +1212,6 @@ main { padding: 2rem 0 3rem; }
 
 /* A phone link whose number is still a TODO: visibly not a working link */
 a.is-todo { opacity: 0.7; border-style: dashed; cursor: not-allowed; }
+
+/* An element with the hidden attribute must stay hidden even if a class (like .btn) sets display */
+[hidden] { display: none !important; }

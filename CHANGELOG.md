@@ -32,6 +32,16 @@ All notable changes to this template. Format follows [Keep a Changelog](https://
 - Actions updated to current majors; Dependabot no longer watches pip (there is no manifest).
 - The template's default drought map now uses `current_conus_trd.png` (the previous `current_us_trd.png` returns 404).
 
+### Fixed (review round 2)
+- A hidden element (`hidden` attribute) was still shown when a class like `.btn` set `display`, leaving dead TODO/bad-URL buttons visible; `[hidden]` now always wins.
+- Outage data is rejected if `fetchedAt` or `lastUpdated` is in the future (> 5 minutes), or if a count is negative, fractional or absurd (1e308). `fetch_outages.py` applies the same checks.
+- An unmatched `match_town` (utility lists other towns, none is ours) now shows "No data for <town> (check match_town)" and makes the fetch fail loudly, until `outages.match_verified` is set to `true`. `outages.data_file` must be inside `data/`.
+- Tests are fixture-based: adapting the root `town.json` (inland, no marine) no longer breaks `npm test`.
+- Southport example: the CMP outage line is now 1-800-696-1000, the number CMP's FAQ publishes for its 24/7 outage system (the previous number could not be verified).
+- Fridge card and pest text no longer claim tides or a northern climate; the inland example has pests off; `telHref` dials only a single plain phone number; feature flags written as "false"/0 count as off; `check-config` flags more placeholder shapes, missing bindings, missing phone numbers, non-boolean flags and a QR code that doesn't match `site.public_url`; `site.public_url` is the canonical URL.
+- Embed iframes also allow popups to escape the sandbox; the Pages "unfinished config" warning no longer creates empty annotations.
+- README and social-preview screenshots are labeled as illustrative and match what the live demo shows (Power unavailable).
+
 ### Fixed (security)
 - Remote NWS, NOAA and outage data can no longer inject markup or script into the page (temperature and outage counts were rendered unescaped).
 - `javascript:`, `data:` and `http:` URLs in `town.json` are never used for links, images or iframes; third-party iframes are sandboxed and send no referrer; identifiers that end up in URLs must match their documented shape.

@@ -62,6 +62,57 @@ class ValidateTests(unittest.TestCase):
                 fetch_outages.validate_response(county, town)
 
 
+class HostileValueTests(unittest.TestCase):
+    """Numbers that would make the page lie or break: negative, fractional, absurd, wrong type, future."""
+
+    def reject(self, county=None, town=None):
+        with self.assertRaises(fetch_outages.ResponseError):
+            fetch_outages.validate_response(county or COUNTY, town or TOWN)
+
+    def test_bad_totals_are_rejected(self):
+        for bad in (-1, 1.5, 1e308, 10 ** 12, True, "7", None, [7]):
+            self.reject(county={**COUNTY, "outages": bad})
+            self.reject(county={**COUNTY, "customers": bad})
+
+    def test_whole_number_floats_are_accepted(self):
+        fetch_outages.validate_response({**COUNTY, "outages": 7.0}, TOWN)
+
+    def test_bad_per_row_counts_are_rejected(self):
+        for bad in (-4, 0.5, 1e308, "5"):
+            self.reject(town={"features": [{"properties": {"level": "town", "town": "EXAMPLETON", "Outages": bad}}]})
+            self.reject(county={**COUNTY, "features": [{"properties": {"county": "EXAMPLE", "Outages": bad}}]})
+
+    def test_future_timestamps_are_rejected(self):
+        self.reject(county={**COUNTY, "lastUpdated": "2999-01-01 00:00:00"})
+        fetch_outages.validate_response({**COUNTY, "lastUpdated": "2000-01-01 00:00:00"}, TOWN)
+        fetch_outages.validate_response({**COUNTY, "lastUpdated": "not a date"}, TOWN)  # unparseable is tolerated, not trusted
+
+    def test_data_file_must_be_inside_data_dir(self):
+        good = fetch_outages.resolve_data_file({"data_file": "data/outages.json"})
+        self.assertTrue(good.endswith(os.path.join("data", "outages.json")))
+        for bad in ("../town.json", "town.json", "data/../app.js", "/etc/passwd", "data", "", None, "data/../../x"):
+            with self.assertRaises(fetch_outages.ConfigError, msg=repr(bad)):
+                fetch_outages.resolve_data_file({"data_file": bad})
+
+
+class MatchTests(unittest.TestCase):
+    def result(self, cfg, town=TOWN):
+        return fetch_outages.build_result(COUNTY, town, cfg)
+
+    def test_unmatched_town_with_other_towns_fails_until_verified(self):
+        cfg = {"match_town": "TYPOVILLE", "match_county": "EXAMPLE"}
+        self.assertIn("TYPOVILLE", fetch_outages.match_problem(self.result(cfg), cfg))
+        verified = {**cfg, "match_verified": True}
+        self.assertIsNone(fetch_outages.match_problem(self.result(verified), verified))
+        self.assertTrue(self.result(verified)["matchVerified"])
+        self.assertFalse(self.result(cfg)["matchVerified"])
+
+    def test_matched_town_or_empty_list_is_fine(self):
+        self.assertIsNone(fetch_outages.match_problem(self.result(CFG), CFG))
+        cfg = {"match_town": "ANYWHERE", "match_county": "EXAMPLE"}
+        self.assertIsNone(fetch_outages.match_problem(self.result(cfg, {"features": []}), cfg))
+
+
 class WriteDecisionTests(unittest.TestCase):
     NOW = fetch_outages.datetime.datetime(2030, 1, 1, 12, 0, tzinfo=fetch_outages.datetime.timezone.utc)
 
@@ -95,13 +146,13 @@ class WriteDecisionTests(unittest.TestCase):
         for old in (None, {}, {**new, "sample": True}, "junk"):
             self.assertTrue(fetch_outages.should_write(old, new, now=self.NOW), repr(old))
 
-    def test_unmatched_town_warns_only_when_other_towns_exist(self):
-        r = fetch_outages.build_result(COUNTY, TOWN, {"match_town": "NOWHERE", "match_county": "EXAMPLE"})
-        self.assertEqual(len(fetch_outages.unmatched_warnings(r, {"match_town": "NOWHERE"})), 1)
-        r = fetch_outages.build_result(COUNTY, TOWN, CFG)
-        self.assertEqual(fetch_outages.unmatched_warnings(r, CFG), [])
-        empty = fetch_outages.build_result({**COUNTY}, {"features": []}, CFG)
-        self.assertEqual(fetch_outages.unmatched_warnings(empty, CFG), [])
+    def test_unmatched_county_only_warns(self):
+        cfg = {"match_town": "EXAMPLETON", "match_county": "NOWHERE"}
+        r = fetch_outages.build_result(COUNTY, TOWN, cfg)
+        r["counties_seen"] = len(COUNTY["features"])
+        self.assertEqual(len(fetch_outages.unmatched_warnings(r, cfg)), 1)
+        self.assertEqual(fetch_outages.unmatched_warnings(r, {**cfg, "match_verified": True}), [])
+        self.assertIsNone(fetch_outages.match_problem(r, cfg), "a county typo does not stop the run")
 
 
 class MainTests(unittest.TestCase):
@@ -129,6 +180,34 @@ class MainTests(unittest.TestCase):
                  mock.patch.dict(os.environ, env, clear=True), redirect_stdout(io.StringIO()) as out:
                 self.assertEqual(fetch_outages.main(["--enabled"]), 0)
             self.assertEqual(out.getvalue().strip(), want)
+
+    def run_with(self, cfg, county, town):
+        base = {"provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",
+                "match_town": "EXAMPLETON", "match_county": "EXAMPLE", "data_file": "data/test-out.json"}
+        responses = {"county": county, "town": town}
+        with mock.patch.object(fetch_outages, "load_config", return_value={"outages": {**base, **cfg}}), \
+             mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
+             mock.patch.object(fetch_outages, "fetch_json", side_effect=lambda u, h, k, f: responses[f]), \
+             mock.patch.object(fetch_outages, "resolve_data_file", return_value="/nonexistent-dir/never-written.json"), \
+             redirect_stdout(io.StringIO()), mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            code = fetch_outages.main([])
+        return code, err.getvalue()
+
+    def test_typod_town_fails_loudly_instead_of_writing(self):
+        code, err = self.run_with({"match_town": "TYPOVILLE"}, COUNTY, TOWN)
+        self.assertEqual(code, 1)
+        self.assertIn("::error::", err)
+        self.assertIn("match_verified", err)
+
+    def test_bad_data_file_path_fails_loudly(self):
+        with mock.patch.object(fetch_outages, "load_config", return_value={"outages": {
+                "provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",
+                "match_town": "EXAMPLETON", "match_county": "EXAMPLE", "data_file": "../app.js"}}), \
+             mock.patch.dict(os.environ, {"K": "secret"}, clear=True), \
+             mock.patch.object(fetch_outages, "fetch_json", side_effect=lambda u, h, k, f: COUNTY if f == "county" else TOWN), \
+             redirect_stdout(io.StringIO()), mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(fetch_outages.main([]), 1)
+        self.assertIn("data/", err.getvalue())
 
     def test_junk_response_keeps_last_good_file_and_fails(self):
         cfg = {"provider": "avangrid", "api_key_env": "K", "api_url": "u", "api_key_header": "h",

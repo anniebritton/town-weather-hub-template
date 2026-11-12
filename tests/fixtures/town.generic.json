@@ -60,7 +60,8 @@
     "county_label": "Example County",
     "timestamp_zone_label": "Central",
     "data_file": "data/outages.json",
-    "stale_after_minutes": 90
+    "stale_after_minutes": 90,
+    "match_verified": false
   },
 
   "alerts": {

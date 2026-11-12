@@ -7,7 +7,7 @@ A one-page weather, power, and coast dashboard you can fork and point at your ow
 
 ![Town Weather Hub rendered with the Southport, Maine example config](docs/screenshot-desktop.png)
 
-*Screenshots use mocked data, not live weather.*
+*Illustrative: the Southport example config rendered with mocked weather data (the live demo's page is titled "Island Weather Hub", the title set in that config). Power reads "Unavailable" because the demo is not connected to a utility; the screenshots show the same.*
 
 **Live demo (Southport, Maine example): <https://anniebritton.github.io/town-weather-hub-template/>** (works once GitHub Pages is enabled for the repo, see below).
 
@@ -40,7 +40,7 @@ All town-specific values (coordinates, NWS office and zones, tide station, utili
 
 1. On GitHub, click **Use this template** (top right) and choose **Create a new repository**. (If you are reading a copy that is not a template, clone it and push to a new repo instead.)
 2. Edit `town.json` for your town (steps below). Run `npm run check-config` to list what is still a placeholder or marked `TODO`, and `npm run check-config:online` to have NWS and NOAA confirm your zone, grid, radar, marine zone and tide station.
-3. Turn on GitHub Pages: **Settings, Pages, Source: GitHub Actions**. The included `pages.yml` publishes your own `town.json` in your repository. (The Southport demo overlay runs only in the upstream template repository, so your site can never show another town's phone numbers.)
+3. Turn on GitHub Pages **before your first push**: **Settings, Pages, Source: GitHub Actions**. (Until you do, the deploy step fails and the run shows a red X; enable Pages and re-run it.) The included `pages.yml` publishes your own `town.json` in your repository. (The Southport demo overlay runs only in the upstream template repository, so your site can never show another town's phone numbers.)
 4. Optional, for outage data: **Settings, Actions, General**, allow workflows read/write permissions, then add your API key as a repository secret (see "Point the outage data at your utility").
 
 > **Using an AI coding agent?** Point it at [`AGENTS.md`](AGENTS.md). It has a step-by-step "set this up for my town" workflow (looks up your NWS grid and zones, fills in `town.json`, checks the result) and the rules for changing the template itself.
@@ -91,7 +91,9 @@ This is the piece that varies most. Many utilities block cross-origin requests f
 
 `data/outages.json` in this repo is a fictional sample marked `"sample": true`; the page ignores it. With provider `"none"` or no secret, the workflow does nothing and the Power section shows link-outs and "Unavailable" instead of numbers.
 
-How the page treats the data: it is shown only if the file has the expected shape, is not a sample, and was fetched within `outages.stale_after_minutes` (default 90); otherwise the Power tile says "Unavailable". The fetch script rejects a malformed API response and keeps the last good file (the run fails visibly), and rewrites the file only when the numbers change or every ~45 minutes, to keep the commit history small. If your town never matches a row, run `OUTAGE_API_KEY=... python3 scripts/fetch_outages.py --towns` to see how the utility spells town and county names.
+How the page treats the data: it is shown only if the file has the expected shape, is not a sample, and was fetched within `outages.stale_after_minutes` (default 90); otherwise the Power tile says "Unavailable". The fetch script rejects a malformed API response and keeps the last good file (the run fails visibly), and rewrites the file only when the numbers change or every ~45 minutes, to keep the commit history small. If the utility is reporting other towns but none matches `match_town`, the fetch **fails** (and writes nothing) so a typo cannot pass as "no outages"; the page likewise says "No data for <town> (check match_town)". Run `OUTAGE_API_KEY=... python3 scripts/fetch_outages.py --towns` to see how the utility spells names, fix `match_town`, and once you are sure of the spelling set `outages.match_verified` to `true` (after that, a missing row means "no outages in your town"). Numbers must be whole and non-negative, and timestamps cannot be in the future, or the data is rejected.
+
+The workflow commits to and starts the Pages deploy from your default branch (`main`), so main must accept pushes from the `github-actions` bot (no blocking branch protection), and Pages must already be enabled.
 
 ### 4. Swap the state-level resources
 
@@ -108,12 +110,14 @@ The highest-value content is also the cheapest to change: the `local_meaning` en
 
 ### 6. Regenerate the QR code
 
-`assets/site-qr.svg` points at a placeholder URL. Regenerate it for your site, then commit it:
+`assets/site-qr.svg` points at a placeholder URL. Regenerate it for your site (use the same URL as `site.public_url`), then commit it. The `title=` argument records the URL inside the file so `npm run check-config` can confirm the code matches `site.public_url`:
 
 ```sh
 pip install segno
-python3 -c "import segno; segno.make('https://YOUR-SITE-URL/', error='m').save('assets/site-qr.svg', scale=4, dark='#16262e', xmldecl=True)"
+python3 -c "import segno; u='https://YOUR-SITE-URL/'; segno.make(u, error='m').save('assets/site-qr.svg', scale=4, dark='#16262e', xmldecl=True, title=u)"
 ```
+
+`site.public_url` is also used as the page's canonical URL.
 
 ## Config reference (`town.json`)
 
@@ -124,7 +128,7 @@ python3 -c "import segno; segno.make('https://YOUR-SITE-URL/', error='m').save('
 | `location` | `lat`, `lon`, `timezone`, `map_zoom` (Windy map) |
 | `nws` | `office`, `grid_x`, `grid_y`, `alerts_zone`, `marine_zone`\*, `marine_description`\*, `radar_station`, `radar_name` |
 | `tides`\* | `station`, `name` |
-| `outages` | `provider` (`none` or `avangrid`), `utility_name`, `utility_short`, `phone_display`, `phone_dial` (digits only, used for `tel:` links), `report_url`, `map_url`, `api_url`, `api_key_header`, `api_key_env` (env var **name**), `match_town`, `match_county`, `county_label`, `timestamp_zone_label`, `data_file`, `stale_after_minutes` |
+| `outages` | `provider` (`none` or `avangrid`), `utility_name`, `utility_short`, `phone_display`, `phone_dial` (digits only, used for `tel:` links), `report_url`, `map_url`, `api_url`, `api_key_header`, `api_key_env` (env var **name**), `match_town`, `match_county`, `county_label`, `timestamp_zone_label`, `data_file` (must be a file inside `data/`), `stale_after_minutes`, `match_verified` |
 | `alerts` | `storm_severities` (NWS severities that trigger Storm Mode), `storm_event_pattern` (regex of event names that also trigger it), `demo_event` (event shown by `?storm=demo`) |
 | `thresholds` | `wind_watch_mph`, `wind_caution_mph`, `gust_watch_mph`, `gust_caution_mph`, `seas_watch_ft`\*, `seas_caution_ft`\* (when forecast cards get tinted) |
 | `fire` | `agency`, `map_url`, `embed` (`false` hides the iframe), `map_title`, `season`, `burn_note` |
@@ -144,7 +148,7 @@ python3 -c "import segno; segno.make('https://YOUR-SITE-URL/', error='m').save('
 - All live data is fetched client-side from free public APIs (NWS, NOAA tides) except utility outage data, which the GitHub Action snapshots into the repo.
 - Fetch failures degrade gracefully: every live section falls back to a labeled link to the official source. A broken `town.json` shows a visible error naming the problem instead of a blank page, and a bad regex in one `local_meaning` entry never hides a real alert.
 - **Safety rules** live in [`town-utils.js`](town-utils.js): remote data is rendered as text or checked numbers (never trusted markup), every link from `town.json` must be `https:`, and identifiers that go into URLs must match their documented shape. Third-party map iframes are sandboxed and send no referrer.
-- **Privacy note:** the fonts load from Google Fonts, so visitors' IP addresses reach Google. Delete the three `<link>` lines for fonts in `index.html` and `fridge-card.html` to use system fonts instead.
+- **Embeds:** the map iframes are sandboxed with `allow-scripts allow-same-origin` (the embeds need both). Chrome logs a console warning for that combination; it is expected, and the sandbox still blocks navigation of your page and form posts. **Privacy note:** the fonts load from Google Fonts, so visitors' IP addresses reach Google. Delete the three `<link>` lines for fonts in `index.html` and `fridge-card.html` to use system fonts instead.
 - An alert zone that NWS does not recognise shows a "Setup problem" card instead of a false green "All clear".
 - The pest meters are **weather-based estimates, not surveillance**.
 

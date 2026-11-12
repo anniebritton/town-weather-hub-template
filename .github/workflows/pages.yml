@@ -6,6 +6,9 @@ name: Deploy to GitHub Pages
 # a real town. In ANY OTHER repository (your copy of the template) it deploys your own town.json, so
 # your site can never show another town's phone numbers. Nothing here needs editing for that.
 #
+# Before your first push: enable Settings > Pages > Source "GitHub Actions". Until you do, the deploy
+# step fails and the run shows a red X (nothing is broken; enable Pages and re-run it).
+#
 # It also runs after the "Refresh outage data" workflow (a push made with GITHUB_TOKEN does not
 # trigger other workflows, so that workflow starts this one explicitly).
 
@@ -51,8 +54,9 @@ jobs:
         if: github.repository != env.UPSTREAM_TEMPLATE
         continue-on-error: true
         run: |
-          # Does not block the deploy; shows up as annotations on the run.
-          node scripts/check-config.js | sed 's/^/::warning::/' | head -50
+          # Does not block the deploy; shows up as annotations on the run. Blank lines are dropped so
+          # no empty annotations are created.
+          node scripts/check-config.js | sed '/^[[:space:]]*$/d; s/^/::warning::/' | head -50 || true
 
       - uses: actions/upload-pages-artifact@v5
         with:

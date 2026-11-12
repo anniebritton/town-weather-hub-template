@@ -165,7 +165,7 @@
   <div class="site-row">
     <img id="card-qr" src="assets/site-qr.svg" alt="QR code linking to the weather hub website">
     <p>
-      Live alerts, outage numbers, tides, and forecasts:<br>
+      Live alerts, outage numbers, <span data-feature="tides">tides, </span>and forecasts:<br>
       <span class="url">Weather Hub</span><br>
       Scan the code with your phone camera, or ask any family member to bookmark it for you.
     </p>
@@ -196,7 +196,7 @@
       document.getElementById("card-phones").replaceChildren(...(card.phones || []).map((p) => {
         const strong = document.createElement("strong");
         // A number nobody has verified yet is shown as a visible TODO, never as a real-looking number
-        const todo = TownUtils.isTodo(p.number);
+        const todo = TownUtils.isTodo(p.number) || typeof p.number !== "string" || !p.number.trim();
         strong.textContent = todo ? "TODO: add number" : p.number;
         if (todo) strong.className = "todo";
         return row(p.urgent ? " urgent" : "", p.label, strong);

@@ -43,8 +43,8 @@
     "provider": "avangrid",
     "utility_name": "Central Maine Power",
     "utility_short": "CMP",
-    "phone_display": "1-800-696-3848",
-    "phone_dial": "18006963848",
+    "phone_display": "1-800-696-1000",
+    "phone_dial": "18006961000",
     "report_url": "https://portal.cmpco.com/report-outage",
     "map_url": "https://portal.cmpco.com/outages/map",
     "api_url": "https://apim.avangrid.com/cmp/v1/public/outagedata",
@@ -55,7 +55,8 @@
     "county_label": "Lincoln County",
     "timestamp_zone_label": "Eastern",
     "data_file": "data/outages.json",
-    "stale_after_minutes": 90
+    "stale_after_minutes": 90,
+    "match_verified": true
   },
   "alerts": {
     "storm_severities": [
@@ -161,7 +162,7 @@
       },
       {
         "label": "Report a power outage: Central Maine Power (24 hours)",
-        "number": "1-800-696-3848"
+        "number": "1-800-696-1000"
       },
       {
         "label": "Weather updates when internet is out: NOAA Weather Radio",

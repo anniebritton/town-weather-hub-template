@@ -2,7 +2,7 @@
 const { defineConfig, devices } = require("@playwright/test");
 
 const PORT = 4173;
-const town = require("./town.json");
+const town = require("./tests/fixtures/town.generic.json"); // the browser runs in the fixture's timezone
 
 module.exports = defineConfig({
   testDir: "tests/e2e",

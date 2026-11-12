@@ -4,9 +4,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const town = require("../../town.json");
+const town = require("../fixtures/town.generic.json"); // frozen, so editing the root town.json cannot break these
 
-const data = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", town.outages.data_file), "utf8"));
+const data = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "data", "outages.json"), "utf8"));
 
 test("outages data has a parseable lastUpdated timestamp", () => {
   assert.match(data.lastUpdated, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
@@ -58,7 +58,7 @@ test("what scripts/fetch_outages.py writes is accepted by the page (writer/reade
 import json, sys
 sys.path.insert(0, "scripts")
 import fetch_outages as f
-county = {"lastUpdated": "2030-06-01 07:25:00", "customers": 10, "outages": 3, "incidents": 1,
+county = {"lastUpdated": "2020-06-01 07:25:00", "customers": 10, "outages": 3, "incidents": 1,
           "features": [{"properties": {"county": "EXAMPLE", "Outages": 3}}]}
 town = {"features": [{"properties": {"level": "town", "town": "EXAMPLETON", "Outages": 3}}]}
 f.validate_response(county, town)

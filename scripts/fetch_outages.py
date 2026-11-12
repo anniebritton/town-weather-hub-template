@@ -18,6 +18,11 @@ Safety rules (the page relies on these):
     as unavailable instead of showing stale numbers as current.
   * The file is rewritten only when the numbers change, or when the previous
     file is older than HEARTBEAT_MINUTES, to keep the commit history small.
+  * If the utility reports other towns but none matches outages.match_town, the
+    script fails (exit 1) so a typo cannot look like "no outages". Once you have
+    confirmed the spelling (see --towns), set outages.match_verified to true:
+    a missing row then means "no outages in your town".
+  * The data file must live inside data/ (nothing else in the repo is overwritten).
 
 Other modes:
     --enabled   print "true"/"false" (used by the workflow to skip work)
@@ -36,6 +41,8 @@ import urllib.request
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 HEARTBEAT_MINUTES = 45
+MAX_COUNT = 10 ** 9        # no utility has a billion customers; rejects absurd or hostile values
+MAX_FUTURE = datetime.timedelta(minutes=5)
 
 
 class ResponseError(ValueError):
@@ -61,8 +68,39 @@ def fetch_json(api_url, header, key, filt):
         return json.load(res)
 
 
-def _is_number(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+def _is_count(v):
+    """A whole, non-negative, plausible number of customers (rejects -1, 1.5, 1e308, True, "5")."""
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, float):
+        if not v.is_integer():
+            return False
+        v = int(v)
+    return isinstance(v, int) and 0 <= v <= MAX_COUNT
+
+
+def _parse_utility_time(value):
+    """Utility timestamps look like '2030-06-01 07:25:00' (local time, no zone). None if unparseable."""
+    try:
+        return datetime.datetime.strptime(value.strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
+    except (AttributeError, ValueError):
+        return None
+
+
+class ConfigError(ValueError):
+    """town.json asks for something unsafe or unusable."""
+
+
+def resolve_data_file(cfg):
+    """Absolute path of outages.data_file, which must be inside the repo's data/ directory."""
+    name = cfg.get("data_file")
+    if not isinstance(name, str) or not name.strip():
+        raise ConfigError("outages.data_file is missing")
+    data_dir = os.path.realpath(os.path.join(ROOT, "data"))
+    path = os.path.realpath(os.path.join(ROOT, name))
+    if os.path.commonpath([data_dir, path]) != data_dir or path == data_dir:
+        raise ConfigError(f"outages.data_file {name!r} must be a file inside data/ (refusing to write elsewhere)")
+    return path
 
 
 def validate_response(county, town):
@@ -78,9 +116,16 @@ def validate_response(county, town):
                 raise ResponseError(f"{name} response has a feature without 'properties'")
     if not isinstance(county.get("lastUpdated"), str) or not county["lastUpdated"].strip():
         raise ResponseError("county response is missing 'lastUpdated'")
+    stamped = _parse_utility_time(county["lastUpdated"])
+    if stamped is not None and stamped - datetime.datetime.now(datetime.timezone.utc) > MAX_FUTURE:
+        raise ResponseError("county response has a 'lastUpdated' in the future")
     for key in ("customers", "outages", "incidents"):
-        if not _is_number(county.get(key)):
-            raise ResponseError(f"county response is missing a numeric '{key}'")
+        if not _is_count(county.get(key)):
+            raise ResponseError(f"county response needs a whole, non-negative number for '{key}'")
+    for name, data in (("county", county), ("town", town)):
+        for f in data["features"]:
+            if "Outages" in f["properties"] and not _is_count(f["properties"]["Outages"]):
+                raise ResponseError(f"{name} response has an invalid 'Outages' count: {f['properties']['Outages']!r}")
 
 
 def build_result(county, town, outages_cfg, now=None):
@@ -101,6 +146,7 @@ def build_result(county, town, outages_cfg, now=None):
 
     return {
         "status": "ok",
+        "matchVerified": bool(outages_cfg.get("match_verified")),
         "fetchedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "lastUpdated": county.get("lastUpdated"),
         "totals": {
@@ -138,16 +184,27 @@ def should_write(old, new, now=None):
     return fetched is None or (now - fetched) >= datetime.timedelta(minutes=HEARTBEAT_MINUTES)
 
 
-def unmatched_warnings(result, outages_cfg):
-    """Human-readable hints when the configured names match nothing in the response."""
-    notes = []
+def match_problem(result, outages_cfg):
+    """An error message when the utility reports other towns but none is ours, and the spelling
+    has not been confirmed (outages.match_verified). None when there is nothing to complain about."""
+    if result["town"] is not None or outages_cfg.get("match_verified"):
+        return None
     names = {t.get("town", "").upper() for t in result["towns"]}
-    if result["town"] is None and names:
-        notes.append(
-            f"no town row matched match_town={outages_cfg['match_town']!r}. This is normal when "
-            "your town has no outages. If it never matches, check the spelling: the API is "
-            f"currently reporting {len(names)} other town(s). Run with --towns to list them.")
-    return notes
+    if not names:
+        return None
+    return (
+        f"no town row matched match_town={outages_cfg['match_town']!r}, but the utility is reporting "
+        f"{len(names)} other town(s). If this is a typo, fix match_town (run with --towns to list the "
+        "names the utility uses). If your town really has no outages, confirm the spelling and set "
+        'outages.match_verified to true in town.json. Not writing the data file.')
+
+
+def unmatched_warnings(result, outages_cfg):
+    """Softer hints that do not stop the run (the county row is not used for the headline)."""
+    counties = result.get("counties_seen", 0)
+    if result["county"] is None and counties and not outages_cfg.get("match_verified"):
+        return [f"no county row matched match_county={outages_cfg['match_county']!r}; check the spelling."]
+    return []
 
 
 def main(argv=None):
@@ -175,6 +232,9 @@ def main(argv=None):
             print("town  ", t)
         for c in sorted({c["properties"].get("county", "") for c in county["features"]}):
             print("county", c)
+        seen = {t["properties"].get("town", "").upper() for t in town["features"]}
+        print(f"\nmatch_town {cfg['match_town']!r}:", "found" if cfg["match_town"].upper() in seen else
+              "not in this list (normal if your town has no outages right now)")
         return 0
 
     try:
@@ -183,11 +243,22 @@ def main(argv=None):
         print(f"::error::Outage API returned unexpected data ({e}). Keeping the last good file.", file=sys.stderr)
         return 1
 
+    try:
+        out = resolve_data_file(cfg)
+    except ConfigError as e:
+        print(f"::error::{e}", file=sys.stderr)
+        return 1
+
     result = build_result(county, town, cfg)
+    result["counties_seen"] = len(county["features"])  # for the warning below; not written to the file
+    problem = match_problem(result, cfg)
+    if problem:
+        print(f"::error::{problem}", file=sys.stderr)
+        return 1
     for note in unmatched_warnings(result, cfg):
         print(f"::warning::{note}")
+    result.pop("counties_seen")
 
-    out = os.path.join(ROOT, cfg["data_file"])
     try:
         with open(out, encoding="utf-8") as f:
             old = json.load(f)

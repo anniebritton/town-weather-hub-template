@@ -1,6 +1,8 @@
 // Network mocks shared by the e2e specs. Nothing here touches the internet or needs an API key:
 // NWS, NOAA tides, and every third-party embed are intercepted.
-const baseTown = require("../../town.json");
+// A frozen coastal config: every spec runs against this, never the root town.json you edit.
+// (Specs that cover other configs pass `townConfig`; examples.spec.js covers the root file and each example.)
+const baseTown = require("../fixtures/town.generic.json");
 const town = baseTown;
 
 /** Deep-merge `patch` into a copy of `base` (arrays and scalars are replaced). */
@@ -70,9 +72,7 @@ async function mockNetwork(page, {
   const MARINE_TEXT = marineText(served.nws.marine_zone || "XXZ001");
 
   // town.json: serve a replacement config (whole file or a patch on the default) when asked
-  if (townConfig || townPatch) {
-    await page.route("**/town.json", (route) => route.fulfill(json(served)));
-  }
+  await page.route("**/town.json", (route) => route.fulfill(json(served)));
 
   // Block everything external by default (fonts, radar, embeds), then add specific mocks.
   await page.route(otherHosts, (route) => route.fulfill({ status: 204, body: "" }));

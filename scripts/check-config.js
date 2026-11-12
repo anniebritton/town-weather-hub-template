@@ -10,10 +10,11 @@
 // Exit code: 0 nothing to fix, 1 something to fix, 2 the file is unusable.
 const fs = require("node:fs");
 const path = require("node:path");
-const { isTodo, safeUrl, feature } = require("../town-utils.js");
+const { isTodo, isOff, safeUrl, feature, getPath } = require("../town-utils.js");
 
 const COASTAL_WORDS = /\b(boat|boats|boating|hurricane|tropical storm|surf|tide|tides|seas|mooring|moorings|dock|docks|coastal|shore|shoreline|storm surge|rip current|small craft|gale)\b/i;
-const PLACEHOLDER_TEXT = /example\.com|exampleton|dryfork|anystate|example county|example electric|555-?01\d\d|5550100/i;
+const PLACEHOLDER_TEXT = /example\.com|exampleton|dryfork|anystate|example county|example electric|555[-. ]?01\d\d|5550100|\b0{3}[-. ]?0{3}[-. ]?0{4}\b|\bTBD\b|\bX{3,}\b|your (town|utility)/i;
+const ROOT = path.join(__dirname, "..");
 
 // [dotted path, test(value, town), hint, applies(town)]
 const RULES = [
@@ -44,10 +45,48 @@ function get(obj, dotted) {
   return dotted.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
 
+/*
+ * Keys that index.html / fridge-card.html read (data-town="a.b" and friends). If one is missing from
+ * town.json the visitor sees the page's generic fallback text ("your town", "phone"), so report it.
+ */
+function findMissingBindings(town, htmlFiles = ["index.html", "fridge-card.html"]) {
+  const found = [];
+  const seen = new Set();
+  for (const file of htmlFiles) {
+    let html;
+    try { html = fs.readFileSync(path.join(ROOT, file), "utf8"); } catch { continue; }
+    for (const m of html.matchAll(/data-town(?:-href|-tel)?="([^"]+)"/g)) {
+      const p = m[1];
+      if (seen.has(p)) continue;
+      seen.add(p);
+      if (/^tides\./.test(p) && !feature(town, "tides")) continue;
+      if (/^nws\.marine_/.test(p) && !feature(town, "marine")) continue;
+      const v = getPath(town, p);
+      if (v === undefined || v === null || String(v).trim() === "") {
+        found.push({ path: p, value: "", hint: `missing: ${file} would show its generic fallback text ("your town", "phone", ...) here` });
+      }
+    }
+  }
+  return found;
+}
+
+/* The QR code file records the URL it encodes in its <title>; compare it with site.public_url. */
+function findQrProblem(town, qrFile) {
+  if (!qrFile || !fs.existsSync(qrFile)) return null;
+  const svg = fs.readFileSync(qrFile, "utf8");
+  const encoded = (svg.match(/<title>([^<]*)<\/title>/) || [])[1];
+  const want = town.site && town.site.public_url;
+  const regen = "regenerate it with the command in the README (step 6)";
+  if (!encoded) return { path: "assets/site-qr.svg", value: "", hint: `does not record its URL, so it cannot be checked: ${regen}` };
+  if (/example\.com/i.test(encoded)) return { path: "assets/site-qr.svg", value: encoded, hint: `encodes a placeholder URL: ${regen}` };
+  if (want && encoded !== want) return { path: "assets/site-qr.svg", value: encoded, hint: `encodes a different URL than site.public_url (${want}): ${regen}` };
+  return null;
+}
+
 const short = (v) => (v.length > 60 ? v.slice(0, 57) + "..." : v);
 const isUrlField = (p) => /(^|\.)(url|[a-z_]*_url)$/.test(p);
 
-function findPlaceholders(town) {
+function findPlaceholders(town, { qrFile, checkBindings = true } = {}) {
   const found = [];
   const seen = new Set();
   const add = (p, value, hint) => { if (!seen.has(p)) { seen.add(p); found.push({ path: p, value: short(String(value)), hint }); } };
@@ -56,6 +95,16 @@ function findPlaceholders(town) {
     const v = get(town, p);
     if (v !== undefined && (!applies || applies(town)) && test(v, town)) add(p, v, hint);
   }
+
+  for (const [k, v] of Object.entries(town.features || {})) {
+    if (typeof v !== "boolean") add(`features.${k}`, v, `must be true or false (not ${JSON.stringify(v)}); ${isOff(v) ? "it is being treated as OFF" : "it is being treated as on"}`);
+  }
+  (town.fridge_card && town.fridge_card.phones || []).forEach((p, i) => {
+    if (!p || typeof p.number !== "string" || !p.number.trim()) add(`fridge_card.phones[${i}].number`, "", "missing: the card will show a TODO marker; add the number or remove the entry");
+  });
+  if (checkBindings) for (const f of findMissingBindings(town)) add(f.path, f.value, f.hint);
+  const qr = findQrProblem(town, qrFile);
+  if (qr) add(qr.path, qr.value, qr.hint);
 
   const strings = [];
   walk(town, "", strings);
@@ -138,7 +187,9 @@ async function main(argv) {
   const unusable = usable(town);
   if (unusable) { console.error(`${unusable} in ${file}`); return 2; }
 
-  const found = findPlaceholders(town);
+  // The QR file is checked when the config sits next to its assets/ folder (the repo root), not for examples
+  const qrFile = path.join(path.dirname(file), "assets", "site-qr.svg");
+  const found = findPlaceholders(town, { qrFile });
   if (online) found.push(...(await checkOnline(town)));
 
   if (!found.length) {
@@ -152,4 +203,4 @@ async function main(argv) {
 }
 
 if (require.main === module) main(process.argv).then((code) => process.exit(code));
-module.exports = { findPlaceholders, checkOnline };
+module.exports = { findPlaceholders, checkOnline, findMissingBindings, findQrProblem };

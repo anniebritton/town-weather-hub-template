@@ -2,7 +2,8 @@
 // Town-specific values come from town.json, so these tests keep passing after you adapt it.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const town = require("../../town.json");
+// A frozen coastal config, so these tests do not depend on what you put in the root town.json
+const town = require("../fixtures/town.generic.json");
 const {
   setTown, nwsUrls, hazardLevel, localMeaning, isStormAlert, seasHeadline, extractZoneSection, parseMarinePeriods,
   parseMarineDetail, compressSeas, compressWind, compressWaves, windArrow, checkOutageData, findConfigProblem, hazardTag,

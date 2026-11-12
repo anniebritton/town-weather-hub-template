@@ -5,7 +5,7 @@
     "marine": false,
     "tides": false,
     "climate_coastal": false,
-    "pests": true
+    "pests": false
   },
 
   "site": {
@@ -53,7 +53,8 @@
     "county_label": "Example County",
     "timestamp_zone_label": "Mountain",
     "data_file": "data/outages.json",
-    "stale_after_minutes": 90
+    "stale_after_minutes": 90,
+    "match_verified": false
   },
 
   "alerts": {

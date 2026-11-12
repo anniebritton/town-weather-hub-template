@@ -6,6 +6,10 @@ name: Refresh outage data
 #
 # The schedule is OFF in the template. After you have set up a provider and the secret, uncomment it.
 # (GitHub also pauses scheduled workflows after 60 days without repository activity.)
+#
+# The workflow commits to, and starts the Pages deploy from, the repository's default branch. It needs
+# a main branch that GITHUB_TOKEN may push to (no branch protection that blocks the github-actions bot),
+# and Pages must already be enabled (Settings > Pages > Source: GitHub Actions).
 
 on:
   # schedule:

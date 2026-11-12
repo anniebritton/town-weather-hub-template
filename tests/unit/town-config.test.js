@@ -77,6 +77,7 @@ for (const [label, file] of configs) {
     assert.ok(todoOr(/^\d{10,11}$/)(o.phone_dial), "phone_dial is 10-11 digits, or TODO");
     assert.equal(isTodo(o.phone_dial), isTodo(o.phone_display), "phone_display and phone_dial should both be TODO or both be real");
     assert.ok(Number.isInteger(o.stale_after_minutes) && o.stale_after_minutes > 0, "stale_after_minutes");
+    assert.equal(typeof o.match_verified, "boolean", "outages.match_verified must be true or false");
     assert.match(o.api_key_env, /^[A-Z][A-Z0-9_]*$/, "api_key_env is the NAME of an env var, not a key");
     assert.equal("api_key" in o, false, "never put a key in town.json");
     if (o.provider !== "none") for (const k of ["api_url", "api_key_header", "match_town", "match_county"]) str(o[k], `outages.${k}`);
@@ -140,8 +141,9 @@ function flatKeys(obj, prefix = "") {
   return out;
 }
 
-test("every example uses only keys the template has, and has every key it needs", () => {
-  const base = JSON.parse(fs.readFileSync(path.join(root, "town.json"), "utf8"));
+test("every example uses only keys the generic config has, and has every key it needs", () => {
+  // The schema reference is the frozen generic config, not the root town.json you edit
+  const base = JSON.parse(fs.readFileSync(path.join(root, "tests", "fixtures", "town.generic.json"), "utf8"));
   const baseKeys = new Set(flatKeys(base));
   for (const [label, file] of configs.slice(1)) {
     const ex = JSON.parse(fs.readFileSync(file, "utf8"));

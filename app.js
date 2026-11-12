@@ -26,6 +26,8 @@ const DEFAULT_THRESHOLDS = {
   seas_watch_ft: 5, seas_caution_ft: 8,
 };
 const DEFAULT_STALE_MINUTES = 90; // outage data older than this is shown as unavailable
+const MAX_FUTURE_MS = 5 * 60 * 1000; // a timestamp further ahead than this is clock trouble or tampering
+const MAX_COUNT = 1e9; // no utility has a billion customers; this rejects 1e308 and friends
 const REQUIRED_BLOCKS = ["site", "location", "nws"];
 
 function setTown(config) {
@@ -673,17 +675,23 @@ function fillStormTide() {
  */
 function checkOutageData(data, staleMinutes = DEFAULT_STALE_MINUTES, now = Date.now()) {
   const bad = (reason) => ({ ok: false, reason });
+  const count = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_COUNT; // whole, non-negative, plausible
   if (!data || typeof data !== "object" || Array.isArray(data)) return bad("not a JSON object");
   if (data.sample === true) return bad("sample data, not from a real utility");
   if (data.status !== undefined && data.status !== "ok") return bad(`status is ${JSON.stringify(data.status)}`);
   if (typeof data.lastUpdated !== "string" || !data.lastUpdated.trim()) return bad("no lastUpdated");
-  if (!data.totals || num(data.totals.outages) === null) return bad("no numeric totals.outages");
+  // utility timestamps are local time with no zone, so reading them as UTC can only make them look EARLIER
+  // than they are; a value that still lands in the future is wrong
+  const stamped = Date.parse(data.lastUpdated.trim().replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(data.lastUpdated) ? "" : "Z"));
+  if (!Number.isNaN(stamped) && stamped - now > MAX_FUTURE_MS) return bad("lastUpdated is in the future");
+  if (!data.totals || !count(data.totals.outages)) return bad("totals.outages is not a whole number of customers");
   for (const key of ["town", "county"]) {
     if (!(key in data)) return bad(`no ${key} entry`);
-    if (data[key] !== null && (typeof data[key] !== "object" || num(data[key].Outages) === null)) return bad(`${key}.Outages is not a number`);
+    if (data[key] !== null && (typeof data[key] !== "object" || !count(data[key].Outages))) return bad(`${key}.Outages is not a whole number of customers`);
   }
   const fetched = typeof data.fetchedAt === "string" ? Date.parse(data.fetchedAt) : NaN;
   if (Number.isNaN(fetched)) return bad("no valid fetchedAt time");
+  if (fetched - now > MAX_FUTURE_MS) return bad("fetchedAt is in the future");
   const limit = num(staleMinutes) ?? DEFAULT_STALE_MINUTES;
   if (now - fetched > limit * 60000) return bad(`data is more than ${limit} minutes old`);
   return { ok: true };
@@ -722,6 +730,17 @@ async function loadOutages() {
     const totalOut = data.totals.outages;
     const fmt = (n) => n.toLocaleString();
     const countyLabel = escapeHtml(typeof o.county_label === "string" ? o.county_label : "the county");
+
+    // The utility reports other towns but none matching ours, and nobody has confirmed the spelling
+    // (outages.match_verified): most likely a typo in match_town. Say so instead of claiming "None".
+    const unverifiedMatch = data.town === null && Array.isArray(data.towns) && data.towns.length > 0 && data.matchVerified !== true;
+    if (unverifiedMatch) {
+      const matchName = typeof o.match_town === "string" ? o.match_town : TOWN.site.place;
+      grid.innerHTML = `<p class="status-line">No data for ${escapeHtml(matchName)} (check match_town in town.json). Use ${utility}'s outage map below.</p>`;
+      setTile("tile-power", "warn", "No data", `for ${matchName}: check match_town`);
+      setStatus("outage-updated", "");
+      return;
+    }
 
     grid.innerHTML = `
       <div class="stat-card ${townOut ? "stat-bad" : "stat-ok"}">
@@ -857,6 +876,14 @@ function applyHubPage() {
     document.title = `${site.name} — ${marine ? "Weather, Power & Coast" : "Weather & Power"}`;
     const desc = document.querySelector('meta[name="description"]');
     if (desc && site.description) desc.setAttribute("content", site.description);
+  }, problems);
+
+  safely("canonical URL", () => {
+    const url = safeUrl(site.public_url);
+    if (!url) return;
+    let link = document.querySelector('link[rel="canonical"]');
+    if (!link) { link = document.createElement("link"); link.rel = "canonical"; document.head.append(link); }
+    link.href = url;
   }, problems);
 
   const lat = num(loc.lat);
